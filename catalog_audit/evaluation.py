@@ -17,6 +17,10 @@ from pathlib import Path
 
 from .models import Asset, Evaluation, Tier
 
+# Below this many planted AI tracks, precision and recall are reported with an
+# explicit caveat rather than as if they were measurements.
+SMALL_SAMPLE = 10
+
 
 def load_ground_truth(csv_path) -> dict:
     """Read the answer key.
@@ -114,5 +118,14 @@ def summary(ev: Evaluation) -> str:
         parts.append("Precision %.2f." % ev.precision)
     if ev.recall is not None:
         parts.append("Recall %.2f." % ev.recall)
+
+    # A rate computed over a handful of tracks is a count wearing a decimal
+    # point. Say which one it is rather than letting the reader assume.
+    if 0 < planted < SMALL_SAMPLE:
+        parts.append(
+            "Only %d AI track%s was planted, so these are counts rather than "
+            "measured rates \u2014 the confidence interval on a sample this "
+            "size is wide enough that the figures should be read as "
+            "indicative." % (planted, "" if planted == 1 else "s were"))
 
     return " ".join(parts)

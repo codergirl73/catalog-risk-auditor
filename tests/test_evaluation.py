@@ -3,7 +3,7 @@
 import unittest
 
 from catalog_audit.evaluation import evaluate, summary
-from catalog_audit.models import Asset, Tier
+from catalog_audit.models import Asset, Evaluation, Tier
 
 
 def asset(name, tier, truth):
@@ -63,3 +63,24 @@ class TestEvaluate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSmallSampleHonesty(unittest.TestCase):
+    """A rate over a handful of tracks is a count wearing a decimal point."""
+
+    def test_thin_sample_is_flagged_as_indicative(self):
+        ev = Evaluation(labelled=50, true_positive=3, true_negative=47)
+        text = summary(ev)
+        self.assertIn("indicative", text)
+
+    def test_a_healthy_sample_is_not_caveated(self):
+        ev = Evaluation(labelled=200, true_positive=40, false_negative=5,
+                        true_negative=155)
+        self.assertNotIn("indicative", summary(ev))
+
+    def test_the_caveat_names_the_actual_count(self):
+        ev = Evaluation(labelled=50, true_positive=1, true_negative=49)
+        self.assertIn("Only 1 AI track", summary(ev))
+
+    def test_no_labels_reports_no_accuracy_at_all(self):
+        self.assertIn("No ground-truth", summary(Evaluation()))
