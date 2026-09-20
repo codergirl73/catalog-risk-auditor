@@ -107,6 +107,52 @@ td.n{text-align:right;font-family:ui-monospace,Menlo,monospace;
 footer{padding:26px 32px 46px;color:var(--muted);font-size:12.5px;
   border-top:1px solid var(--line);margin-top:30px}
 footer a{color:var(--clean)}
+
+.evidence{margin:0 32px 18px}
+.evidence h3{margin:0 0 6px}
+table.tracks{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
+table.tracks th{text-align:left;font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.07em;color:var(--muted);padding:7px 8px;
+  border-bottom:1px solid var(--line);white-space:nowrap}
+table.tracks td{padding:7px 8px;border-bottom:1px solid var(--line);
+  color:var(--ink2);vertical-align:middle}
+table.tracks td.n{text-align:right;font-family:ui-monospace,Menlo,monospace;
+  color:var(--ink);white-space:nowrap}
+table.tracks td.file{font-family:ui-monospace,Menlo,monospace;font-size:12px;
+  overflow-wrap:anywhere}
+.pill{display:inline-block;font-size:10.5px;padding:2px 8px;border-radius:3px;
+  text-transform:uppercase;letter-spacing:.05em;font-weight:700;
+  white-space:nowrap}
+.pill.clean{background:#16314c;color:var(--clean)}
+.pill.contested{background:#453612;color:var(--contested)}
+.pill.suspect{background:#4a1e19;color:var(--suspect)}
+.pill.error{background:#2a303a;color:var(--error)}
+.tag{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:3px;
+  background:#1c2733;color:var(--ink2);letter-spacing:.03em}
+.spotlight{margin-top:24px;padding-top:18px;border-top:1px solid var(--line)}
+.spotfile{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;
+  color:var(--ink);margin:0 0 8px;overflow-wrap:anywhere}
+#spotlight-json{background:#0d1015;border:1px solid var(--line);
+  border-radius:8px;padding:14px 16px;margin-top:12px;
+  font:12.5px/1.6 ui-monospace,Menlo,monospace;color:var(--ink2);
+  max-height:420px;overflow:auto;white-space:pre}
+#spotlight-json span{display:block}
+#spotlight-json .hit{background:#3a2f0d;color:var(--contested)}
+.replay-nav{position:sticky;bottom:0;z-index:5;display:flex;
+  align-items:center;justify-content:space-between;gap:16px;
+  padding:14px 32px;background:rgba(18,21,26,.94);
+  border-top:1px solid var(--line)}
+.replay-nav button{background:var(--clean);color:#08121c;border:0;
+  border-radius:6px;padding:10px 20px;font-size:14px;font-weight:600;
+  cursor:pointer}
+.replay-nav button:hover:not(:disabled){filter:brightness(1.08)}
+.replay-nav button#prev{background:transparent;color:var(--ink2);
+  border:1px solid var(--line)}
+.replay-nav button:disabled{opacity:.4;cursor:default}
+#nav-pos{color:var(--muted);font-size:12.5px;
+  font-family:ui-monospace,Menlo,monospace;text-align:center;flex:1}
+@media (max-width:900px){.evidence{margin:0 16px 18px}
+  .replay-nav{padding:12px 16px}}
 </style>
 </head><body>
 <header>
@@ -114,15 +160,16 @@ footer a{color:var(--clean)}
     <p class="eyebrow">Acquisition diligence</p>
     <h1>Catalog Risk Auditor</h1>
   </div>
-  <button id="run">Replay</button>
+  
 </header>
 
 
 <div class="banner">
   <strong>This is a recording of a real run.</strong>
-  Every event below was emitted by the agent and every number was computed by
-  it, against live HumanStandard API responses. Press play to watch it again,
-  or <a href="memo.html">read the memo it produced</a>.
+  Every event below was emitted by the agent, every number was computed by it,
+  and the raw JSON further down is exactly what HumanStandard returned. Step
+  through it with the controls at the bottom &mdash; nothing moves on its own
+  &mdash; or <a href="memo.html">read the memo it produced</a>.
 </div>
 <main>
   <section class="panel" id="plan-panel">
@@ -140,6 +187,31 @@ footer a{color:var(--clean)}
       through it. Every escalation carries its reason.</p></div>
   </section>
 </main>
+
+<section class="panel evidence hidden" id="evidence">
+  <h2>What HumanStandard returned</h2>
+  <p class="note">The stream above says &ldquo;16/16 scored&rdquo;. It does not
+  say what any of the sixteen were. These are the verdicts themselves, worst
+  first &mdash; one row per real API response.</p>
+  <div class="wrapt">
+    <table class="tracks">
+      <thead><tr>
+        <th>Track</th><th>Tier</th><th>Verdict</th>
+        <th class="n">Confidence</th><th class="n">AI score</th>
+        <th>Attribution</th>
+      </tr></thead>
+      <tbody id="tracks-body"></tbody>
+    </table>
+  </div>
+
+  <div class="spotlight hidden" id="spotlight-wrap">
+    <h3>One response, in full</h3>
+    <p class="spotfile" id="spotlight-file"></p>
+    <p class="note" id="spotlight-note"></p>
+    <pre id="spotlight-json"></pre>
+  </div>
+</section>
+
 
 <section class="panel result hidden" id="result">
   <div class="headline">
@@ -179,7 +251,13 @@ footer a{color:var(--clean)}
 </section>
 
 
-<footer>Recorded Meridian Sound Library &middot; detector humanstandard &middot; evidence manifest b6b0d3a6913153e5<br>Source: <a href="https://github.com/codergirl73/catalog-risk-auditor">github.com/codergirl73/catalog-risk-auditor</a> &middot; the catalog and its royalty figures are constructed for demonstration; the detection results are real.</footer><script>
+<footer>Recorded Meridian Sound Library &middot; detector humanstandard &middot; evidence manifest b6b0d3a6913153e5<br>Source: <a href="https://github.com/codergirl73/catalog-risk-auditor">github.com/codergirl73/catalog-risk-auditor</a> &middot; the catalog and its royalty figures are constructed for demonstration; the detection results are real.</footer>
+<nav class="replay-nav">
+  <button id="prev" disabled>&larr; Back</button>
+  <span id="nav-pos">10 slides</span>
+  <button id="next">Start &rarr;</button>
+</nav>
+<script>
 'use strict';
 const $ = (id) => document.getElementById(id);
 const money = (n) => '$' + Math.round(n).toLocaleString('en-US');
@@ -290,50 +368,174 @@ function showSummary(s) {
 
 
 'use strict';
-const EVENTS = [{"type": "plan", "title": "Audit plan", "detail": "7 steps", "data": {"steps": ["Inventory the catalog folder and estimate the call budget", "Score every asset through HumanStandard, using cache where possible", "Sort assets into clean, contested and suspect against stated thresholds", "Escalate contested assets to a human review queue with reasons", "Join detection results to the seller's reported revenue", "Compute exposure and a recommended escrow", "Score the audit against ground truth, if labels were supplied"]}}, {"type": "step", "title": "Inventory the catalog folder and estimate the call budget", "detail": "", "data": {}}, {"type": "tool_result", "title": "inventory", "detail": "16 audio files, 53.0 MB total", "data": {"count": 16}}, {"type": "tool_result", "title": "budget check", "detail": "16 of 16 already cached. 0 live calls needed, 200 credit budget", "data": {"needed": 0, "cached": 16, "limit": 0}}, {"type": "tool_result", "title": "runtime estimate", "detail": "nothing to score; every asset is already cached", "data": {}}, {"type": "step", "title": "Score every asset through HumanStandard, using cache where possible", "detail": "detector: humanstandard | budget 0", "data": {}}, {"type": "tool_result", "title": "humanstandard.detect", "detail": "10/16 scored (10 from cache, 0 failed)", "data": {"done": 10, "total": 16}}, {"type": "tool_result", "title": "humanstandard.detect", "detail": "16/16 scored (16 from cache, 0 failed)", "data": {"done": 16, "total": 16}}, {"type": "tool_result", "title": "budget spent", "detail": "0 live calls spent of 0 budgeted, 16 served from cache, 0 skipped for lack of budget", "data": {"spent": 0, "remaining": 0}}, {"type": "step", "title": "Sort assets into clean, contested and suspect against stated thresholds", "detail": "suspect when HumanStandard's human-safe tier (~1-2% FPR) says ai | clean when its recall tier (~5-10% FPR) says human | contested when the tiers disagree", "data": {}}, {"type": "finding", "title": "Tier breakdown", "detail": "clean 8 | contested 2 | suspect 6 | error 0", "data": {"counts": {"clean": 8, "contested": 2, "suspect": 6, "error": 0}}}, {"type": "step", "title": "Escalate contested assets to a human review queue with reasons", "detail": "", "data": {}}, {"type": "tool_result", "title": "review_queue", "detail": "2 assets routed to human review", "data": {"count": 2}}, {"type": "step", "title": "Join detection results to the seller's reported revenue", "detail": "", "data": {}}, {"type": "tool_result", "title": "load_royalties", "detail": "16 of 16 assets matched to a revenue row", "data": {}}, {"type": "step", "title": "Compute exposure and a recommended escrow", "detail": "", "data": {}}, {"type": "verdict", "title": "Exposure", "detail": "6 of 16 tracks (37.5%) are suspect, carrying $8,365 of $48,000 annual revenue (17.4%). Recommended escrow $171,710 against an asking price of $720,000.", "data": {"valuation": {"track_count": 16, "annual_revenue_usd": 48000.01, "multiple": 15.0, "asking_price_usd": 720000.15, "clean_count": 8, "contested_count": 2, "suspect_count": 6, "error_count": 0, "suspect_revenue_usd": 8364.54, "contested_revenue_usd": 6165.53, "suspect_revenue_share": 0.1743, "contested_revenue_share": 0.1284, "recommended_escrow_usd": 171709.58, "escrow_basis": "Suspect revenue of $8,365 held in full plus 50% of contested revenue of $6,166, capitalised at the 15.0x acquisition multiple."}}}, {"type": "step", "title": "Score the audit against ground truth, if labels were supplied", "detail": "", "data": {}}, {"type": "finding", "title": "Accuracy against ground truth", "detail": "Against 16 labelled tracks: 6 of 6 planted AI tracks were caught, 0 missed, and 0 landed in the contested band. No human track was wrongly flagged as suspect. Precision 1.00. Recall 1.00. Of 6 correctly flagged AI tracks whose true generator is known, 1 was attributed to the right one, 5 carried no attribution. Only 6 AI tracks were planted, so these are counts rather than measured rates \u2014 the confidence interval on a sample this size is wide enough that the figures should be read as indicative.", "data": {"labelled": 16}}, {"type": "done", "title": "Audit complete", "detail": "manifest b6b0d3a6913153e5", "data": {}}];
+const SLIDES = [{"kind": "events", "title": "", "events": [{"type": "plan", "title": "Audit plan", "detail": "7 steps", "data": {"steps": ["Inventory the catalog folder and estimate the call budget", "Score every asset through HumanStandard, using cache where possible", "Sort assets into clean, contested and suspect against stated thresholds", "Escalate contested assets to a human review queue with reasons", "Join detection results to the seller's reported revenue", "Compute exposure and a recommended escrow", "Score the audit against ground truth, if labels were supplied"]}}]}, {"kind": "events", "title": "Inventory the catalog folder and estimate the call budget", "events": [{"type": "step", "title": "Inventory the catalog folder and estimate the call budget", "detail": "", "data": {}}, {"type": "tool_result", "title": "inventory", "detail": "16 audio files, 53.0 MB total", "data": {"count": 16}}, {"type": "tool_result", "title": "budget check", "detail": "16 of 16 already cached. 0 live calls needed, 200 credit budget", "data": {"needed": 0, "cached": 16, "limit": 0}}, {"type": "tool_result", "title": "runtime estimate", "detail": "nothing to score; every asset is already cached", "data": {}}]}, {"kind": "events", "title": "Score every asset through HumanStandard, using cache where possible", "events": [{"type": "step", "title": "Score every asset through HumanStandard, using cache where possible", "detail": "detector: humanstandard | budget 0", "data": {}}, {"type": "tool_result", "title": "humanstandard.detect", "detail": "10/16 scored (10 from cache, 0 failed)", "data": {"done": 10, "total": 16}}, {"type": "tool_result", "title": "humanstandard.detect", "detail": "16/16 scored (16 from cache, 0 failed)", "data": {"done": 16, "total": 16}}, {"type": "tool_result", "title": "budget spent", "detail": "0 live calls spent of 0 budgeted, 16 served from cache, 0 skipped for lack of budget", "data": {"spent": 0, "remaining": 0}}]}, {"kind": "evidence", "title": "What HumanStandard returned"}, {"kind": "events", "title": "Sort assets into clean, contested and suspect against stated thresholds", "events": [{"type": "step", "title": "Sort assets into clean, contested and suspect against stated thresholds", "detail": "suspect when HumanStandard's human-safe tier (~1-2% FPR) says ai | clean when its recall tier (~5-10% FPR) says human | contested when the tiers disagree", "data": {}}, {"type": "finding", "title": "Tier breakdown", "detail": "clean 8 | contested 2 | suspect 6 | error 0", "data": {"counts": {"clean": 8, "contested": 2, "suspect": 6, "error": 0}}}]}, {"kind": "events", "title": "Escalate contested assets to a human review queue with reasons", "events": [{"type": "step", "title": "Escalate contested assets to a human review queue with reasons", "detail": "", "data": {}}, {"type": "tool_result", "title": "review_queue", "detail": "2 assets routed to human review", "data": {"count": 2}}]}, {"kind": "events", "title": "Join detection results to the seller's reported revenue", "events": [{"type": "step", "title": "Join detection results to the seller's reported revenue", "detail": "", "data": {}}, {"type": "tool_result", "title": "load_royalties", "detail": "16 of 16 assets matched to a revenue row", "data": {}}]}, {"kind": "events", "title": "Compute exposure and a recommended escrow", "events": [{"type": "step", "title": "Compute exposure and a recommended escrow", "detail": "", "data": {}}, {"type": "verdict", "title": "Exposure", "detail": "6 of 16 tracks (37.5%) are suspect, carrying $8,365 of $48,000 annual revenue (17.4%). Recommended escrow $171,710 against an asking price of $720,000.", "data": {"valuation": {"track_count": 16, "annual_revenue_usd": 48000.01, "multiple": 15.0, "asking_price_usd": 720000.15, "clean_count": 8, "contested_count": 2, "suspect_count": 6, "error_count": 0, "suspect_revenue_usd": 8364.54, "contested_revenue_usd": 6165.53, "suspect_revenue_share": 0.1743, "contested_revenue_share": 0.1284, "recommended_escrow_usd": 171709.58, "escrow_basis": "Suspect revenue of $8,365 held in full plus 50% of contested revenue of $6,166, capitalised at the 15.0x acquisition multiple."}}}]}, {"kind": "events", "title": "Score the audit against ground truth, if labels were supplied", "events": [{"type": "step", "title": "Score the audit against ground truth, if labels were supplied", "detail": "", "data": {}}, {"type": "finding", "title": "Accuracy against ground truth", "detail": "Against 16 labelled tracks: 6 of 6 planted AI tracks were caught, 0 missed, and 0 landed in the contested band. No human track was wrongly flagged as suspect. Precision 1.00. Recall 1.00. Of 6 correctly flagged AI tracks whose true generator is known, 1 was attributed to the right one, 5 carried no attribution. Only 6 AI tracks were planted, so these are counts rather than measured rates \u2014 the confidence interval on a sample this size is wide enough that the figures should be read as indicative.", "data": {"labelled": 16}}, {"type": "done", "title": "Audit complete", "detail": "manifest b6b0d3a6913153e5", "data": {}}]}, {"kind": "summary", "title": "The position"}];
 const SUMMARY = {"escrow": 171709.58, "asking": 720000.15, "revenue": 48000.01, "tracks": 16, "clean": 8, "contested": 2, "suspect": 6, "errors": 0, "clean_revenue": 33469.94, "contested_revenue": 6165.53, "suspect_revenue": 8364.54, "suspect_share_count": 37.5, "suspect_share_revenue": 17.43, "review_queue": [{"filename": "2014-02-12Bigwords__Reading2Volume3.mp3", "ai_score": 4.9, "annual_usd": 3551.17, "reason": "Split verdict \u2014 press-safe human, human-safe human, recall ai. Borderline by the detector's own account. Risk peaks at 100% from 0:20."}, {"filename": "DWK031__Aydio_-_01_-_Track_64kb.mp3", "ai_score": 4.7, "annual_usd": 2614.36, "reason": "Split verdict \u2014 press-safe human, human-safe human, recall ai. Borderline by the detector's own account. Risk peaks at 68% from 0:33."}], "mock": false, "evaluation": {"labelled": 16, "true_positive": 6, "false_positive": 0, "true_negative": 8, "false_negative": 0, "contested_ai": 0, "contested_human": 2, "false_positive_files": [], "false_negative_files": [], "origin_labelled": 6, "origin_correct": 1, "origin_wrong": 0, "origin_absent": 5, "origin_confusions": []}};
-const STEP_PAUSE = 520;
-const EVENT_PAUSE = 190;
+const TRACKS = [{"filename": "sonics__fake_00001_suno_0.mp3", "tier": "suspect", "verdict": "ai", "confidence": 1.0, "ai_score": 100.0, "origin": "", "label": "AI-Generated", "error": ""}, {"filename": "sonics__fake_00105_suno_1.mp3", "tier": "suspect", "verdict": "ai", "confidence": 1.0, "ai_score": 100.0, "origin": "suno", "label": "AI-Generated", "error": ""}, {"filename": "sonics__fake_00214_udio_0.mp3", "tier": "suspect", "verdict": "ai", "confidence": 0.997, "ai_score": 99.7, "origin": "", "label": "AI-Generated", "error": ""}, {"filename": "sonics__fake_00327_udio_0.mp3", "tier": "suspect", "verdict": "ai", "confidence": 1.0, "ai_score": 100.0, "origin": "", "label": "AI-Generated", "error": ""}, {"filename": "sonics__fake_00416_udio_1.mp3", "tier": "suspect", "verdict": "ai", "confidence": 0.999, "ai_score": 99.9, "origin": "", "label": "AI-Generated", "error": ""}, {"filename": "sonics__fake_00524_udio_1.mp3", "tier": "suspect", "verdict": "human", "confidence": 0.294, "ai_score": 70.6, "origin": "", "label": "", "error": ""}, {"filename": "2014-02-12Bigwords__Reading2Volume3.mp3", "tier": "contested", "verdict": "human", "confidence": 0.951, "ai_score": 4.9, "origin": "", "label": "", "error": ""}, {"filename": "DWK031__Aydio_-_01_-_Track_64kb.mp3", "tier": "contested", "verdict": "human", "confidence": 0.953, "ai_score": 4.7, "origin": "", "label": "", "error": ""}, {"filename": "CANDY032__01Bubblyfish-SleighRide.mp3", "tier": "clean", "verdict": "human", "confidence": 0.975, "ai_score": 2.5, "origin": "", "label": "", "error": ""}, {"filename": "CANDY032__06c-c-TheNightBeforeBitMess.mp3", "tier": "clean", "verdict": "human", "confidence": 0.996, "ai_score": 0.4, "origin": "", "label": "", "error": ""}, {"filename": "CANDY032__07KamakazeKitten-SleighRide.mp3", "tier": "clean", "verdict": "human", "confidence": 0.994, "ai_score": 0.6, "origin": "", "label": "", "error": ""}, {"filename": "DWK149__Boogie_Belgique_-_01_-_Dance_With_The_Democrat.mp3", "tier": "clean", "verdict": "human", "confidence": 0.996, "ai_score": 0.4, "origin": "", "label": "", "error": ""}, {"filename": "HILIV003__01_hiliv003_onsundaysidream_hypnagogic.mp3", "tier": "clean", "verdict": "human", "confidence": 0.986, "ai_score": 1.4, "origin": "", "label": "", "error": ""}, {"filename": "MIXG031__01_Intoxicated_Piano_-_Animosity.mp3", "tier": "clean", "verdict": "human", "confidence": 0.999, "ai_score": 0.1, "origin": "", "label": "", "error": ""}, {"filename": "MIXG032__01_Zipp_-_Pour_Quoi_Royale.mp3", "tier": "clean", "verdict": "human", "confidence": 0.999, "ai_score": 0.1, "origin": "", "label": "", "error": ""}, {"filename": "MIXG032__02_Dog_On_Springs_-_Footloose_feat_Paul_Whiteman.mp3", "tier": "clean", "verdict": "human", "confidence": 0.999, "ai_score": 0.1, "origin": "", "label": "", "error": ""}];
+const SPOTLIGHT = {"filename": "sonics__fake_00524_udio_1.mp3", "tier": "suspect", "verdict": "human", "tier_verdicts": {"press_safe": "human", "human_safe": "ai", "recall": "ai"}, "response": {"verdict": "human", "confidence": 0.2939, "confidence_full_mix": 0.2939, "ai_probability": 0.7061, "origin": "human", "origin_confidence": null, "duration_sec": 131.22, "model_version": "hsv-1.3.1", "processed_at": "2026-09-20T16:45:57.240000+00:00", "origin_map_evidence": "https://firebasestorage.googleapis.com/v0/b/hsvr-51d2b.firebasestorage.app/o/origin_maps%2F1334958aa2dc7e4644a07684290a40c616942f080b43c2f8f3eadc81369d9aa2.png?alt=media&token=b157ef67-6f71-47fa-b625-7b9372d007ac", "origin_map": {"nearest_population": "Human", "summary_line": "24 of its 25 nearest reference recordings are verified human recordings.", "neighborhood": {"k": 25, "counts": {"Human": 24, "MusicGen": 1}, "dominant": true}}, "risk_segments_full_mix": [{"start": 0.0, "end": 13.75, "risk": 0.0}, {"start": 13.75, "end": 15.0, "risk": 0.2556}, {"start": 15.0, "end": 17.5, "risk": 0.2988}, {"start": 17.5, "end": 18.75, "risk": 0.0}, {"start": 18.75, "end": 20.0, "risk": 0.537}, {"start": 20.0, "end": 22.5, "risk": 0.7423}, {"start": 22.5, "end": 27.5, "risk": 0.0}, {"start": 27.5, "end": 30.0, "risk": 0.4231}, {"start": 30.0, "end": 31.25, "risk": 0.3417}, {"start": 31.25, "end": 41.25, "risk": 0.0}, {"start": 41.25, "end": 43.75, "risk": 0.2704}, {"start": 43.75, "end": 60.0, "risk": 0.0}], "risk_segments_vocal": [], "risk_segments_instrumental": [], "tier_verdicts": {"press_safe": "human", "human_safe": "ai", "recall": "ai"}}};
 
-function play() {
-  const button = $('run');
-  button.disabled = true;
-  button.textContent = 'Replaying\u2026';
-  $('log').innerHTML = '';
-  $('result').classList.add('hidden');
-  $('accuracy').classList.add('hidden');
-  $('queue-wrap').classList.add('hidden');
+let current = -1;
 
-  let i = 0;
-  const tick = () => {
-    if (i >= EVENTS.length) {
-      showSummary(SUMMARY);
-      button.disabled = false;
-      button.textContent = 'Replay';
-      return;
-    }
-    const ev = EVENTS[i++];
-    if (ev.type === 'plan') {
-      steps = (ev.data && ev.data.steps) || [];
-      renderPlan();
-      $('budget').classList.remove('hidden');
-    }
-    if (ev.type === 'step') markStep(ev.title);
-    if (ev.title === 'budget check') $('budget-v').textContent = ev.detail;
-    if (ev.title === 'runtime estimate') {
-      $('runtime-v').textContent = ev.detail.split(' at ')[0];
-    }
-    if (ev.title === 'Accuracy against ground truth') {
-      $('accuracy').classList.remove('hidden');
-      $('accuracy-text').textContent = ev.detail;
-    }
-    if (ev.type === 'done') finishPlan();
-    log(ev.type, ev.title, ev.detail);
-    setTimeout(tick, ev.type === 'step' ? STEP_PAUSE : EVENT_PAUSE);
-  };
-  tick();
+const TIER_LABEL = {clean: 'Clean', contested: 'Contested',
+                    suspect: 'Suspect', error: 'Unscored'};
+
+function cell(text, cls) {
+  const td = document.createElement('td');
+  if (cls) td.className = cls;
+  td.textContent = text;
+  return td;
 }
 
-$('run').addEventListener('click', play);
-setTimeout(play, 400);
+function renderTracks() {
+  const body = $('tracks-body');
+  body.innerHTML = '';
+  TRACKS.forEach((t) => {
+    const tr = document.createElement('tr');
+    tr.appendChild(cell(t.filename, 'file'));
+
+    const tier = document.createElement('td');
+    const pill = document.createElement('span');
+    pill.className = 'pill ' + t.tier;
+    pill.textContent = TIER_LABEL[t.tier] || t.tier;
+    tier.appendChild(pill);
+    tr.appendChild(tier);
+
+    tr.appendChild(cell(t.error ? 'failed' : (t.verdict || '—')));
+    tr.appendChild(cell(t.confidence == null ? '—'
+      : Math.round(t.confidence * 100) + '%', 'n'));
+    tr.appendChild(cell(t.ai_score == null ? '—'
+      : t.ai_score.toFixed(1), 'n'));
+
+    const attribution = document.createElement('td');
+    if (t.origin) {
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = t.origin;
+      attribution.appendChild(tag);
+    } else {
+      attribution.textContent = '—';
+    }
+    tr.appendChild(attribution);
+    body.appendChild(tr);
+  });
+}
+
+function renderSpotlight() {
+  const wrap = $('spotlight-wrap');
+  if (!SPOTLIGHT) { wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  $('spotlight-file').textContent = SPOTLIGHT.filename;
+
+  // The response is shown complete and unaltered -- no keys reordered, no
+  // arrays trimmed -- but tier_verdicts sits at line 88 of 93, behind a long
+  // risk_segments array. So the pane opens scrolled to it rather than
+  // rearranging what the API actually sent.
+  const pretty = JSON.stringify(SPOTLIGHT.response, null, 2);
+  const lines = pretty.split('\n');
+  const pre = $('spotlight-json');
+  pre.textContent = '';
+  let target = null;
+  lines.forEach((line) => {
+    // One block element per line, carrying no newline of its own: an
+    // inline-block that ends in \n eats the line that follows it.
+    const row = document.createElement('span');
+    row.textContent = line;
+    if (line.indexOf('"tier_verdicts"') !== -1) {
+      row.className = 'hit';
+      target = row;
+    }
+    pre.appendChild(row);
+  });
+  if (target) {
+    pre.scrollTop = Math.max(0, target.offsetTop - pre.offsetTop - 28);
+  }
+
+  const tiers = SPOTLIGHT.tier_verdicts || {};
+  const pairs = Object.keys(tiers).map((k) => k + ' = ' + tiers[k]).join(', ');
+  const distinct = new Set(Object.keys(tiers).map((k) => tiers[k]));
+  if (distinct.size > 1) {
+    $('spotlight-note').textContent =
+      'Read the verdict field first: it says "' + SPOTLIGHT.verdict +
+      '". Now read tier_verdicts, the three calibrated operating points: ' +
+      pairs + '. They disagree with it. This tool tiers on those, not on the ' +
+      'headline field, which is why this track was caught rather than passed ' +
+      'into the clean base. The response below is complete and unaltered; it ' +
+      'opens scrolled to that field, and scrolls up to the rest.';
+  } else {
+    $('spotlight-note').textContent =
+      'The verdict says "' + SPOTLIGHT.verdict + '" and all three calibrated ' +
+      'operating points agree: ' + pairs + '.';
+  }
+}
+
+function renderSlide(index) {
+  // Rebuilt from slide zero every time rather than mutated forward, so going
+  // back lands on exactly the state that slide had going forward.
+  $('log').innerHTML = '';
+  $('accuracy').classList.add('hidden');
+  $('queue-wrap').classList.add('hidden');
+  $('evidence').classList.add('hidden');
+  $('result').classList.add('hidden');
+  $('budget-v').textContent = '—';
+  $('runtime-v').textContent = '—';
+  steps = [];
+  renderPlan();
+
+  let reached = null;
+  for (let i = 0; i <= index; i++) {
+    const slide = SLIDES[i];
+    if (slide.kind !== 'events') continue;
+    slide.events.forEach((ev) => {
+      if (ev.type === 'plan' && !steps.length) {
+        steps = (ev.data && ev.data.steps) || [];
+        renderPlan();
+        $('budget').classList.remove('hidden');
+      }
+      if (ev.type === 'step') reached = ev.title;
+      if (ev.title === 'budget check') $('budget-v').textContent = ev.detail;
+      if (ev.title === 'runtime estimate') {
+        $('runtime-v').textContent = ev.detail.split(' at ')[0];
+      }
+      if (ev.title === 'Accuracy against ground truth') {
+        $('accuracy').classList.remove('hidden');
+        $('accuracy-text').textContent = ev.detail;
+      }
+      log(ev.type, ev.title, ev.detail);
+    });
+  }
+  if (reached) markStep(reached);
+
+  const slide = SLIDES[index];
+  if (slide.kind === 'evidence') {
+    // Unhide before rendering: offsetTop inside a display:none element is
+    // zero, so the scroll-to-field below would silently do nothing.
+    $('evidence').classList.remove('hidden');
+    renderTracks();
+    renderSpotlight();
+  } else if (slide.kind === 'summary') {
+    finishPlan();
+    showSummary(SUMMARY);
+  }
+
+  $('nav-pos').textContent =
+    (index + 1) + ' / ' + SLIDES.length + '  ·  ' + (slide.title || 'Plan');
+  $('prev').disabled = index <= 0;
+  $('next').textContent =
+    index >= SLIDES.length - 1 ? 'Start over' : 'Next →';
+}
+
+function go(delta) {
+  if (delta > 0 && current >= SLIDES.length - 1) {
+    current = 0;
+  } else {
+    current = Math.max(0, Math.min(SLIDES.length - 1, current + delta));
+  }
+  renderSlide(current);
+}
+
+$('next').addEventListener('click', () => go(1));
+$('prev').addEventListener('click', () => go(-1));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(1); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+});
 </script></body></html>

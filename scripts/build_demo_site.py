@@ -6,9 +6,14 @@ a submission page. This records one real run and renders it as a static page
 that replays the same events with the same visuals, next to the memo it
 produced.
 
-Nothing is recreated or dramatised: the events are the ones the agent emitted
-and the numbers are the ones it computed. The run is replayed from the
-response cache, so building the site spends no credits.
+Nothing is recreated or dramatised: the events are the ones the agent emitted,
+the numbers are the ones it computed, and the raw JSON on the evidence slide
+is exactly what HumanStandard returned for that track. The run is replayed
+from the response cache, so building the site spends no credits.
+
+The viewer drives it. The recording is cut into slides -- one per plan step,
+plus an evidence slide showing every verdict that came back and one response
+in full -- and nothing advances on its own.
 
     python3 scripts/build_demo_site.py \\
         --catalog data/demo_catalog \\
@@ -29,12 +34,117 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from catalog_audit import memo, webui  # noqa: E402
-from catalog_audit.agent import AuditAgent  # noqa: E402
+from catalog_audit.agent import PLAN, AuditAgent  # noqa: E402
 
-# Pace the replay so a viewer can follow it without waiting out the real
-# analysis time. Fast enough to hold attention, slow enough to read.
-STEP_PAUSE_MS = 520
-EVENT_PAUSE_MS = 190
+# Populations the API names when it is declining to attribute rather than
+# naming a generator. Same list the memo and the tiering reasons use.
+NOT_A_GENERATOR = frozenset({"human", "uncertain", "unknown", "none"})
+
+# Tier order for the evidence table: the rows a buyer cares about first.
+TIER_ORDER = {"suspect": 0, "contested": 1, "error": 2, "clean": 3}
+
+
+def group_events(events: list) -> list:
+    """Cut the flat event stream into one group per declared plan step.
+
+    Everything before the first step -- the plan announcement itself -- forms
+    its own opening group, so the first click reveals the agent stating what
+    it is about to do rather than jumping straight into doing it.
+    """
+    groups, prelude, index = [], [], 0
+    while index < len(events) and events[index]["type"] != "step":
+        prelude.append(events[index])
+        index += 1
+    if prelude:
+        groups.append({"title": "", "events": prelude})
+
+    current = None
+    for event in events[index:]:
+        if event["type"] == "step":
+            if current:
+                groups.append(current)
+            current = {"title": event["title"], "events": [event]}
+        elif current is not None:
+            current["events"].append(event)
+    if current:
+        groups.append(current)
+    return groups
+
+
+def track_rows(result) -> list:
+    """Every verdict that came back, as a table a viewer can read.
+
+    The streamed events say "16/16 scored". They do not say what any of the
+    sixteen actually were, which is the part somebody evaluating a detection
+    tool wants to see.
+    """
+    rows = []
+    for asset in result.assets:
+        score = asset.score
+        origin = (score.origin or "") if score else ""
+        rows.append({
+            "filename": asset.filename,
+            "tier": asset.tier.value,
+            "verdict": (score.verdict if score else "") or "",
+            "confidence": round(score.confidence, 3) if score else None,
+            "ai_score": round(score.ai_score, 1) if score and score.ok else None,
+            "origin": "" if origin.lower() in NOT_A_GENERATOR else origin,
+            "label": (score.industry_label if score else "") or "",
+            "error": (score.error if score else "") or "",
+        })
+    rows.sort(key=lambda r: (TIER_ORDER.get(r["tier"], 9), r["filename"]))
+    return rows
+
+
+def pick_spotlight(result):
+    """One real response to show in full, chosen for what it teaches.
+
+    Preferring a track whose calibrated operating points disagree with its
+    own headline verdict: that is the case the whole tiering design exists
+    for, and it is far more convincing seen in the raw JSON than described.
+    """
+    candidates = [
+        a for a in result.assets
+        if a.score and a.score.ok and not a.score.mock
+        and isinstance(a.score.raw, dict)
+        and isinstance(a.score.raw.get("response"), dict)
+    ]
+    if not candidates:
+        return None
+
+    def split_verdict(asset) -> bool:
+        values = {v for v in (asset.score.tier_verdicts or {}).values() if v}
+        return len(values) > 1
+
+    chosen = next((a for a in candidates if split_verdict(a)), candidates[0])
+    return {
+        "filename": chosen.filename,
+        "tier": chosen.tier.value,
+        "verdict": chosen.score.verdict,
+        "tier_verdicts": chosen.score.tier_verdicts or {},
+        "response": chosen.score.raw["response"],
+    }
+
+
+def build_slides(events: list) -> list:
+    """The recording, cut into slides the viewer advances through."""
+    slides = [{"kind": "events", "title": group["title"],
+               "events": group["events"]}
+              for group in group_events(events)]
+
+    # The evidence belongs immediately after scoring, which is the moment it
+    # was produced. Matched on the step's own text rather than an index, so
+    # rewording the plan cannot silently misplace it.
+    scoring = next((i for i, s in enumerate(slides)
+                    if s["title"] == PLAN[1]), None)
+    evidence = {"kind": "evidence", "title": "What HumanStandard returned"}
+    if scoring is None:
+        slides.append(evidence)
+    else:
+        slides.insert(scoring + 1, evidence)
+
+    slides.append({"kind": "summary", "title": "The position"})
+    return slides
 
 
 def record(options: dict) -> tuple:
@@ -64,10 +174,45 @@ def record(options: dict) -> tuple:
 BANNER = """
 <div class="banner">
   <strong>This is a recording of a real run.</strong>
-  Every event below was emitted by the agent and every number was computed by
-  it, against live HumanStandard API responses. Press play to watch it again,
-  or <a href="memo.html">read the memo it produced</a>.
+  Every event below was emitted by the agent, every number was computed by it,
+  and the raw JSON further down is exactly what HumanStandard returned. Step
+  through it with the controls at the bottom &mdash; nothing moves on its own
+  &mdash; or <a href="memo.html">read the memo it produced</a>.
 </div>
+"""
+
+EVIDENCE_HTML = """
+<section class="panel evidence hidden" id="evidence">
+  <h2>What HumanStandard returned</h2>
+  <p class="note">The stream above says &ldquo;16/16 scored&rdquo;. It does not
+  say what any of the sixteen were. These are the verdicts themselves, worst
+  first &mdash; one row per real API response.</p>
+  <div class="wrapt">
+    <table class="tracks">
+      <thead><tr>
+        <th>Track</th><th>Tier</th><th>Verdict</th>
+        <th class="n">Confidence</th><th class="n">AI score</th>
+        <th>Attribution</th>
+      </tr></thead>
+      <tbody id="tracks-body"></tbody>
+    </table>
+  </div>
+
+  <div class="spotlight hidden" id="spotlight-wrap">
+    <h3>One response, in full</h3>
+    <p class="spotfile" id="spotlight-file"></p>
+    <p class="note" id="spotlight-note"></p>
+    <pre id="spotlight-json"></pre>
+  </div>
+</section>
+"""
+
+NAV_HTML = """
+<nav class="replay-nav">
+  <button id="prev" disabled>&larr; Back</button>
+  <span id="nav-pos">__SLIDE_COUNT__ slides</span>
+  <button id="next">Start &rarr;</button>
+</nav>
 """
 
 EXTRA_CSS = """
@@ -79,61 +224,232 @@ EXTRA_CSS = """
 footer{padding:26px 32px 46px;color:var(--muted);font-size:12.5px;
   border-top:1px solid var(--line);margin-top:30px}
 footer a{color:var(--clean)}
+
+.evidence{margin:0 32px 18px}
+.evidence h3{margin:0 0 6px}
+table.tracks{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
+table.tracks th{text-align:left;font-size:10.5px;text-transform:uppercase;
+  letter-spacing:.07em;color:var(--muted);padding:7px 8px;
+  border-bottom:1px solid var(--line);white-space:nowrap}
+table.tracks td{padding:7px 8px;border-bottom:1px solid var(--line);
+  color:var(--ink2);vertical-align:middle}
+table.tracks td.n{text-align:right;font-family:ui-monospace,Menlo,monospace;
+  color:var(--ink);white-space:nowrap}
+table.tracks td.file{font-family:ui-monospace,Menlo,monospace;font-size:12px;
+  overflow-wrap:anywhere}
+.pill{display:inline-block;font-size:10.5px;padding:2px 8px;border-radius:3px;
+  text-transform:uppercase;letter-spacing:.05em;font-weight:700;
+  white-space:nowrap}
+.pill.clean{background:#16314c;color:var(--clean)}
+.pill.contested{background:#453612;color:var(--contested)}
+.pill.suspect{background:#4a1e19;color:var(--suspect)}
+.pill.error{background:#2a303a;color:var(--error)}
+.tag{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:3px;
+  background:#1c2733;color:var(--ink2);letter-spacing:.03em}
+.spotlight{margin-top:24px;padding-top:18px;border-top:1px solid var(--line)}
+.spotfile{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;
+  color:var(--ink);margin:0 0 8px;overflow-wrap:anywhere}
+#spotlight-json{background:#0d1015;border:1px solid var(--line);
+  border-radius:8px;padding:14px 16px;margin-top:12px;
+  font:12.5px/1.6 ui-monospace,Menlo,monospace;color:var(--ink2);
+  max-height:420px;overflow:auto;white-space:pre}
+#spotlight-json span{display:block}
+#spotlight-json .hit{background:#3a2f0d;color:var(--contested)}
+.replay-nav{position:sticky;bottom:0;z-index:5;display:flex;
+  align-items:center;justify-content:space-between;gap:16px;
+  padding:14px 32px;background:rgba(18,21,26,.94);
+  border-top:1px solid var(--line)}
+.replay-nav button{background:var(--clean);color:#08121c;border:0;
+  border-radius:6px;padding:10px 20px;font-size:14px;font-weight:600;
+  cursor:pointer}
+.replay-nav button:hover:not(:disabled){filter:brightness(1.08)}
+.replay-nav button#prev{background:transparent;color:var(--ink2);
+  border:1px solid var(--line)}
+.replay-nav button:disabled{opacity:.4;cursor:default}
+#nav-pos{color:var(--muted);font-size:12.5px;
+  font-family:ui-monospace,Menlo,monospace;text-align:center;flex:1}
+@media (max-width:900px){.evidence{margin:0 16px 18px}
+  .replay-nav{padding:12px 16px}}
 """
 
 REPLAY_JS = """
 'use strict';
-const EVENTS = __EVENTS__;
+const SLIDES = __SLIDES__;
 const SUMMARY = __SUMMARY__;
-const STEP_PAUSE = __STEP_PAUSE__;
-const EVENT_PAUSE = __EVENT_PAUSE__;
+const TRACKS = __TRACKS__;
+const SPOTLIGHT = __SPOTLIGHT__;
 
-function play() {
-  const button = $('run');
-  button.disabled = true;
-  button.textContent = 'Replaying\\u2026';
-  $('log').innerHTML = '';
-  $('result').classList.add('hidden');
-  $('accuracy').classList.add('hidden');
-  $('queue-wrap').classList.add('hidden');
+let current = -1;
 
-  let i = 0;
-  const tick = () => {
-    if (i >= EVENTS.length) {
-      showSummary(SUMMARY);
-      button.disabled = false;
-      button.textContent = 'Replay';
-      return;
-    }
-    const ev = EVENTS[i++];
-    if (ev.type === 'plan') {
-      steps = (ev.data && ev.data.steps) || [];
-      renderPlan();
-      $('budget').classList.remove('hidden');
-    }
-    if (ev.type === 'step') markStep(ev.title);
-    if (ev.title === 'budget check') $('budget-v').textContent = ev.detail;
-    if (ev.title === 'runtime estimate') {
-      $('runtime-v').textContent = ev.detail.split(' at ')[0];
-    }
-    if (ev.title === 'Accuracy against ground truth') {
-      $('accuracy').classList.remove('hidden');
-      $('accuracy-text').textContent = ev.detail;
-    }
-    if (ev.type === 'done') finishPlan();
-    log(ev.type, ev.title, ev.detail);
-    setTimeout(tick, ev.type === 'step' ? STEP_PAUSE : EVENT_PAUSE);
-  };
-  tick();
+const TIER_LABEL = {clean: 'Clean', contested: 'Contested',
+                    suspect: 'Suspect', error: 'Unscored'};
+
+function cell(text, cls) {
+  const td = document.createElement('td');
+  if (cls) td.className = cls;
+  td.textContent = text;
+  return td;
 }
 
-$('run').addEventListener('click', play);
-setTimeout(play, 400);
+function renderTracks() {
+  const body = $('tracks-body');
+  body.innerHTML = '';
+  TRACKS.forEach((t) => {
+    const tr = document.createElement('tr');
+    tr.appendChild(cell(t.filename, 'file'));
+
+    const tier = document.createElement('td');
+    const pill = document.createElement('span');
+    pill.className = 'pill ' + t.tier;
+    pill.textContent = TIER_LABEL[t.tier] || t.tier;
+    tier.appendChild(pill);
+    tr.appendChild(tier);
+
+    tr.appendChild(cell(t.error ? 'failed' : (t.verdict || '\u2014')));
+    tr.appendChild(cell(t.confidence == null ? '\u2014'
+      : Math.round(t.confidence * 100) + '%', 'n'));
+    tr.appendChild(cell(t.ai_score == null ? '\u2014'
+      : t.ai_score.toFixed(1), 'n'));
+
+    const attribution = document.createElement('td');
+    if (t.origin) {
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = t.origin;
+      attribution.appendChild(tag);
+    } else {
+      attribution.textContent = '\u2014';
+    }
+    tr.appendChild(attribution);
+    body.appendChild(tr);
+  });
+}
+
+function renderSpotlight() {
+  const wrap = $('spotlight-wrap');
+  if (!SPOTLIGHT) { wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  $('spotlight-file').textContent = SPOTLIGHT.filename;
+
+  // The response is shown complete and unaltered -- no keys reordered, no
+  // arrays trimmed -- but tier_verdicts sits at line 88 of 93, behind a long
+  // risk_segments array. So the pane opens scrolled to it rather than
+  // rearranging what the API actually sent.
+  const pretty = JSON.stringify(SPOTLIGHT.response, null, 2);
+  const lines = pretty.split('\\n');
+  const pre = $('spotlight-json');
+  pre.textContent = '';
+  let target = null;
+  lines.forEach((line) => {
+    // One block element per line, carrying no newline of its own: an
+    // inline-block that ends in \\n eats the line that follows it.
+    const row = document.createElement('span');
+    row.textContent = line;
+    if (line.indexOf('"tier_verdicts"') !== -1) {
+      row.className = 'hit';
+      target = row;
+    }
+    pre.appendChild(row);
+  });
+  if (target) {
+    pre.scrollTop = Math.max(0, target.offsetTop - pre.offsetTop - 28);
+  }
+
+  const tiers = SPOTLIGHT.tier_verdicts || {};
+  const pairs = Object.keys(tiers).map((k) => k + ' = ' + tiers[k]).join(', ');
+  const distinct = new Set(Object.keys(tiers).map((k) => tiers[k]));
+  if (distinct.size > 1) {
+    $('spotlight-note').textContent =
+      'Read the verdict field first: it says "' + SPOTLIGHT.verdict +
+      '". Now read tier_verdicts, the three calibrated operating points: ' +
+      pairs + '. They disagree with it. This tool tiers on those, not on the ' +
+      'headline field, which is why this track was caught rather than passed ' +
+      'into the clean base. The response below is complete and unaltered; it ' +
+      'opens scrolled to that field, and scrolls up to the rest.';
+  } else {
+    $('spotlight-note').textContent =
+      'The verdict says "' + SPOTLIGHT.verdict + '" and all three calibrated ' +
+      'operating points agree: ' + pairs + '.';
+  }
+}
+
+function renderSlide(index) {
+  // Rebuilt from slide zero every time rather than mutated forward, so going
+  // back lands on exactly the state that slide had going forward.
+  $('log').innerHTML = '';
+  $('accuracy').classList.add('hidden');
+  $('queue-wrap').classList.add('hidden');
+  $('evidence').classList.add('hidden');
+  $('result').classList.add('hidden');
+  $('budget-v').textContent = '\u2014';
+  $('runtime-v').textContent = '\u2014';
+  steps = [];
+  renderPlan();
+
+  let reached = null;
+  for (let i = 0; i <= index; i++) {
+    const slide = SLIDES[i];
+    if (slide.kind !== 'events') continue;
+    slide.events.forEach((ev) => {
+      if (ev.type === 'plan' && !steps.length) {
+        steps = (ev.data && ev.data.steps) || [];
+        renderPlan();
+        $('budget').classList.remove('hidden');
+      }
+      if (ev.type === 'step') reached = ev.title;
+      if (ev.title === 'budget check') $('budget-v').textContent = ev.detail;
+      if (ev.title === 'runtime estimate') {
+        $('runtime-v').textContent = ev.detail.split(' at ')[0];
+      }
+      if (ev.title === 'Accuracy against ground truth') {
+        $('accuracy').classList.remove('hidden');
+        $('accuracy-text').textContent = ev.detail;
+      }
+      log(ev.type, ev.title, ev.detail);
+    });
+  }
+  if (reached) markStep(reached);
+
+  const slide = SLIDES[index];
+  if (slide.kind === 'evidence') {
+    // Unhide before rendering: offsetTop inside a display:none element is
+    // zero, so the scroll-to-field below would silently do nothing.
+    $('evidence').classList.remove('hidden');
+    renderTracks();
+    renderSpotlight();
+  } else if (slide.kind === 'summary') {
+    finishPlan();
+    showSummary(SUMMARY);
+  }
+
+  $('nav-pos').textContent =
+    (index + 1) + ' / ' + SLIDES.length + '  \u00b7  ' + (slide.title || 'Plan');
+  $('prev').disabled = index <= 0;
+  $('next').textContent =
+    index >= SLIDES.length - 1 ? 'Start over' : 'Next \u2192';
+}
+
+function go(delta) {
+  if (delta > 0 && current >= SLIDES.length - 1) {
+    current = 0;
+  } else {
+    current = Math.max(0, Math.min(SLIDES.length - 1, current + delta));
+  }
+  renderSlide(current);
+}
+
+$('next').addEventListener('click', () => go(1));
+$('prev').addEventListener('click', () => go(-1));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); go(1); }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+});
 """
 
 
 def build(events: list, result, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
+    slides = build_slides(events)
 
     # The replay reuses the live UI's markup and stylesheet, so the recording
     # and the running tool look like the same thing, because they are.
@@ -142,19 +458,21 @@ def build(events: list, result, out_dir: Path) -> None:
                         "<style>%s%s</style>" % (webui.STYLE, EXTRA_CSS))
     page = page.replace('<script src="/app.js"></script>', "")
     page = page.replace("<main>", BANNER + "<main>")
+    page = page.replace("</main>", "</main>\n" + EVIDENCE_HTML)
     page = page.replace('<a id="memo" href="/memo" target="_blank"',
                         '<a id="memo" href="memo.html" target="_blank"')
     page = page.replace("<title>Catalog Risk Auditor</title>",
                         "<title>Catalog Risk Auditor &mdash; recorded run</title>")
-    page = page.replace("<button id=\"run\">Run audit</button>",
-                        "<button id=\"run\">Replay</button>")
+    # Navigation lives in the sticky bar at the bottom, so the header's own
+    # run button has nothing left to do.
+    page = page.replace('<button id="run">Run audit</button>', "")
 
     shared = webui.SCRIPT.split("$('run').addEventListener")[0]
     replay = (REPLAY_JS
-              .replace("__EVENTS__", json.dumps(events))
+              .replace("__SLIDES__", json.dumps(slides))
               .replace("__SUMMARY__", json.dumps(webui._summary(result)))
-              .replace("__STEP_PAUSE__", str(STEP_PAUSE_MS))
-              .replace("__EVENT_PAUSE__", str(EVENT_PAUSE_MS)))
+              .replace("__TRACKS__", json.dumps(track_rows(result)))
+              .replace("__SPOTLIGHT__", json.dumps(pick_spotlight(result))))
 
     footer = (
         '<footer>Recorded %s &middot; detector %s &middot; evidence manifest '
@@ -165,8 +483,9 @@ def build(events: list, result, out_dir: Path) -> None:
         % (html.escape(str(result.catalog_name)), html.escape(result.provider),
            html.escape(result.manifest_sha256[:16])))
 
-    page = page.replace("</body>", "%s<script>%s\n%s</script></body>"
-                        % (footer, shared, replay))
+    nav = NAV_HTML.replace("__SLIDE_COUNT__", str(len(slides)))
+    page = page.replace("</body>", "%s%s<script>%s\n%s</script></body>"
+                        % (footer, nav, shared, replay))
     (out_dir / "index.html").write_text(page, encoding="utf-8")
 
     (out_dir / "memo.html").write_text(
@@ -175,10 +494,18 @@ def build(events: list, result, out_dir: Path) -> None:
     # Tell Pages not to run the content through Jekyll.
     (out_dir / ".nojekyll").write_text("", encoding="utf-8")
 
-    print("  docs/index.html  %6.1f KB  (replay of %d events)"
-          % ((out_dir / "index.html").stat().st_size / 1024, len(events)))
-    print("  docs/memo.html   %6.1f KB"
-          % ((out_dir / "memo.html").stat().st_size / 1024))
+    spotlight = pick_spotlight(result)
+    print("  docs/index.html  %6.1f KB  (%d slides, %d events, %d verdicts)"
+          % ((out_dir / "index.html").stat().st_size / 1024, len(slides),
+             len(events), len(result.assets)))
+    print("  docs/memo.html   %6.1f KB" %
+          ((out_dir / "memo.html").stat().st_size / 1024))
+    if spotlight:
+        print("  raw response shown: %s (verdict %s, tiers %s)"
+              % (spotlight["filename"], spotlight["verdict"],
+                 spotlight["tier_verdicts"]))
+    else:
+        print("  no live response available to show in full")
 
 
 def main(argv=None) -> int:
