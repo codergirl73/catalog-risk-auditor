@@ -75,16 +75,15 @@ def _by_tier_verdicts(score: TrackScore) -> tuple:
                      % score.industry_label)
         return (
             Tier.SUSPECT,
-            "HumanStandard calls this AI at the human-safe operating point "
-            "(~1-2%% false-positive rate).%s%s" % (label, evidence),
+            "AI at the human-safe operating point (~1-2%% false-positive "
+            "rate).%s%s" % (label, evidence),
         )
 
     if score.headline_verdict == "ai_generated_suspected":
         return (
             Tier.CONTESTED,
-            "Certification declined, but attribution and detection signals "
-            "indicate AI-generated primary elements. HumanStandard recommends "
-            "stem-level verification.%s" % evidence,
+            "Suspected AI-generated primary elements; certification declined. "
+            "Stem-level verification recommended.%s" % evidence,
         )
 
     if recall == "human":
@@ -104,9 +103,8 @@ def _by_tier_verdicts(score: TrackScore) -> tuple:
 
     return (
         Tier.CONTESTED,
-        "The operating points disagree (press-safe %s, human-safe %s, recall "
-        "%s). HumanStandard's own guidance is that a split verdict is "
-        "borderline and belongs with a person.%s"
+        "Split verdict \u2014 press-safe %s, human-safe %s, recall %s. "
+        "Borderline by the detector's own account.%s"
         % (press_safe or "n/a", human_safe or "n/a", recall or "n/a", evidence),
     )
 

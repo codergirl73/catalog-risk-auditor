@@ -96,7 +96,11 @@ class TestCalibratedTiers(unittest.TestCase):
         # Their docs: ai at recall but human at human-safe means borderline.
         tier, why = classify(tiered("uncertain", "human", "ai"))
         self.assertEqual(tier, Tier.CONTESTED)
-        self.assertIn("disagree", why)
+        # the reason must name all three operating points so a reviewer can
+        # see exactly where the detector split
+        self.assertIn("press-safe uncertain", why)
+        self.assertIn("human-safe human", why)
+        self.assertIn("recall ai", why)
 
     def test_uncertain_everywhere_is_contested_not_clean(self):
         tier, _ = classify(tiered("uncertain", "uncertain", "uncertain"))
@@ -111,7 +115,7 @@ class TestCalibratedTiers(unittest.TestCase):
         tier, why = classify(tiered("uncertain", "uncertain", "ai",
                                     headline_verdict="ai_generated_suspected"))
         self.assertEqual(tier, Tier.CONTESTED)
-        self.assertIn("stem-level", why)
+        self.assertIn("stem-level", why.lower())
 
     def test_low_confidence_still_forces_review(self):
         tier, why = classify(tiered("uncertain", "uncertain", "uncertain",
