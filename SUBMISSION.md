@@ -58,31 +58,75 @@ The buyer finds out after closing, when the price is already paid.
 
 ### How the HumanStandard API is integrated
 
-Every asset is submitted to the HumanStandard detection endpoint
-(`catalog_audit/detector.py`). Responses are normalised by `map_response()`
-into a score and the detector's own confidence, then cached on disk keyed by
-SHA-256 of the file, so a catalog is scored once and analysed many times.
+Every asset is submitted to `POST /api/analyze` on
+`https://app.jobsbyhumans.com` (`catalog_audit/detector.py`). The endpoint is
+**asynchronous**: it returns a `job_id`, and the client polls
+`/api/jobs/{job_id}/status` until the verdict lands, with bounded retries and a
+documented 20–30s cold-start allowance. `?detail=full` is requested on every
+call because `tier_verdicts` is what the agent tiers on. Responses are cached
+on disk keyed by SHA-256 of the file, so a catalog is scored once and analysed
+many times.
 
 **The API result is not the output. It is one input to a decision:**
 
-1. **Score and confidence are read separately.** A high score with low
-   confidence is not treated as a finding. Anything under `MIN_CONFIDENCE` is
-   forced into the contested band whatever it scored.
-2. **Assets are tiered against stated, printable thresholds** — clean under
-   25, suspect over 65, contested between. The thresholds print on every run,
-   because a stated threshold can be argued with and a hidden one can only be
-   trusted.
-3. **The contested band is escalated, not resolved.** Each entry carries the
-   reason it could not be settled from audio.
+1. **The verdict is three-valued and stays that way.** `ai`, `human`,
+   `uncertain`. The detector declines to call some tracks, and that refusal is
+   carried to the buyer rather than rounded to the nearer answer.
+2. **Tiering uses HumanStandard's own calibrated operating points, not
+   thresholds we invented.** `press_safe` (~0% FPR), `human_safe` (~1–2%) and
+   `recall` (~5–10%) are published with their false-positive rates attached.
+   An acquisition is an auto-reject decision with money attached, so
+   `human_safe` gates *suspect*, and anything the widest `recall` net still
+   calls human is *clean*.
+3. **The contested band is derived from the detector's own disagreement.**
+   Where the three operating points split — AI at `recall`, human at
+   `human_safe` — HumanStandard's guidance is that the track is borderline.
+   That is exactly the escalation rule, so the uncertainty is theirs, measured,
+   rather than ours, asserted. Confidence below `MIN_CONFIDENCE` forces review
+   regardless.
 4. **Tier decisions are joined to the seller's revenue sheet.** This is where
    a detection result becomes a price.
 5. **The agent's own accuracy is measured and reported** against planted
    ground-truth labels, by name.
 
-`map_response()` handles HumanStandard's synthetic / human / hybrid classes.
-A **hybrid** verdict maps into the contested band by design, and there is a
-test asserting it lands on neither side of it — a track that is partly
-synthetic is exactly the case a human has to listen to.
+### What the memo does with the rest of the response
+
+The API returns far more than a verdict, and a buyer can act on the rest:
+
+- **`origin`** attributes a generator by name, with HumanStandard's own basis
+  for saying so: *"24 of its 25 nearest reference recordings are Suno
+  generations."* The memo has an Attribution section counting tracks and
+  revenue per generator.
+- **`industry_label`** maps onto the July 2026 IFPI/RIAA/A2IM/WIN/IMPALA GenAI
+  labeling standard. The memo reports how much of the catalog meets the
+  **AI-Generated** definition and how much is *suspected* pending stem
+  verification — an industry-standard label, not a private score.
+- **`risk_timeline`** gives per-window probability, so a review-queue entry
+  says *where to listen* ("risk peaks at 94% around 2:14") instead of only
+  that the agent was unsure.
+- **`origin_map_evidence`** is a permanent similarity-map image URL, linked
+  from each escalated row as citable evidence.
+
+### Credits, and not wasting them
+
+The key carries 200 credits and one credit is one scan, so spending is
+guarded rather than trusted. `HS_CREDIT_BUDGET` caps live calls; the agent
+hashes the catalog up front and reports what the run will cost *before*
+spending anything; budget is decremented before each request because a
+request that times out may still have been billed; and responses are cached by
+file hash so re-analysis is free.
+
+`scripts/probe_api.py` verifies the entire integration — submit, poll, map,
+tier — against HumanStandard's `?mock=` fixtures for **zero credits** before
+a single real call is made.
+
+### The fixture that cannot become a finding
+
+Mock responses come back over the real API, from a real key, with real field
+shapes, and carry `"mock": true`. That flag is propagated onto every
+`TrackScore` and promoted to the whole `AuditResult`, so a run built on
+fixtures is marked mock and `memo.render()` refuses it — even though nothing
+about the connection was fake. Tested.
 
 ### How verdicts are communicated
 

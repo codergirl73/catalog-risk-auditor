@@ -47,13 +47,14 @@ cp .env.example .env      # add your HS_API_KEY
 ## Use
 
 ```bash
-# 1. find the real API shape. Spends no credits: it looks for an OpenAPI
-#    spec, then posts empty bodies, since a live endpoint rejects those
-#    with 400/415/422 while a wrong URL just answers 404.
+# 1. verify the integration for ZERO credits. Runs the full
+#    submit -> poll -> map -> tier cycle against HumanStandard's own
+#    ?mock= fixtures: real endpoint, real auth, real response shapes,
+#    nothing billed.
 python3 scripts/probe_api.py
 
-# 2. spend exactly one credit and capture a real response as evidence.
-#    Prints the .env lines that configure the live detector correctly.
+# 2. spend exactly one credit on a real analysis and save the raw
+#    response to out/api_evidence.json.
 python3 scripts/probe_api.py --upload path/to/track.mp3
 
 # 3. build a catalog: CC human music from Internet Archive netlabels
@@ -74,18 +75,57 @@ raw response: `python3 -m catalog_audit.detector path/to/track.mp3`.
 
 ## How it decides
 
-| Tier | Score | Treatment |
+**The thresholds are not ours.** HumanStandard publishes three calibrated
+operating points with their false-positive rates attached, and the agent tiers
+on those rather than on numbers we picked:
+
+| Operating point | False-positive rate | Its purpose |
 |---|---|---|
-| Clean | below 25 | Counted in the acquirable base |
-| Contested | 25–65 | Escalated to human review; revenue weighted at 50% for escrow |
-| Suspect | above 65 | Escrowed in full |
+| `press_safe` | ~0% | Certification, public attestation |
+| `human_safe` | ~1–2% | Auto-reject at distribution |
+| `recall` | ~5–10% | Manual-review net |
 
-Any result below the detector's own confidence floor (default 0.60) is routed
-to human review regardless of its score. Detection failures are excluded from
-the clean base rather than assumed safe.
+An acquisition is an auto-reject decision with money attached, so:
 
-Thresholds are env-configurable and printed on every run, because a stated
-threshold can be argued with and a hidden one can only be trusted.
+| Tier | Rule | Treatment |
+|---|---|---|
+| **Clean** | `recall` still says human | Counted in the acquirable base |
+| **Suspect** | `human_safe` says ai | Escrowed in full |
+| **Contested** | the operating points disagree | Escalated to human review; revenue weighted at 50% for escrow |
+
+That middle row is the point. HumanStandard's own guidance is that a track
+called AI at `recall` but human at `human_safe` is borderline — so the
+contested band is *derived from the detector's own uncertainty* rather than
+asserted by us.
+
+Any verdict below the detector's confidence floor (default 0.60) is routed to
+review regardless of what it said. Detection failures, oversized files and
+assets left unscored when the budget ran out are all excluded from the clean
+base rather than assumed safe.
+
+A score-band fallback (clean under 25, suspect over 65) applies only to a
+response without `tier_verdicts`. Every threshold is env-configurable and
+printed on each run, because a stated threshold can be argued with and a
+hidden one can only be trusted.
+
+## What the API gives the memo
+
+The detection call returns considerably more than a score, and the memo uses
+all of it:
+
+- **A three-valued verdict** — `ai`, `human`, or `uncertain`. The detector
+  declines to call some tracks itself, and that refusal is carried to the
+  buyer rather than rounded to the nearer answer.
+- **Generator attribution** — `origin: "suno"`, with a plain-language basis:
+  *"24 of its 25 nearest reference recordings are Suno generations."* A buyer
+  can act on that in a way they cannot act on "scored 87".
+- **An IFPI/RIAA industry label** — the July 2026 standard distinguishing
+  AI-Generated from AI-Assisted. The memo reports the label the catalog would
+  carry on a platform that adopts it, not a private score.
+- **A per-window risk timeline** — so an escalation tells the reviewer *where
+  to listen*, not merely that the agent was unsure.
+- **A similarity-map image URL** — permanent, citable visual evidence, linked
+  from each review-queue row.
 
 ## Design notes
 
