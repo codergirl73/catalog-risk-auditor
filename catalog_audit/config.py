@@ -6,6 +6,7 @@ argued with; hidden ones just have to be trusted.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -137,6 +138,21 @@ OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", str(ROOT / "out")))
 # Below this length a "key" is too short to redact safely -- scrubbing a
 # two-character string would gut the message it appears in.
 MIN_REDACTABLE_KEY = 8
+
+
+def key_fingerprint() -> str:
+    """A short, stable identifier for the configured key, carrying none of it.
+
+    Printing the last few characters is the usual way to confirm which key is
+    loaded, and it is a real if small disclosure: the length and the tail
+    together narrow a search, and a static analyser is right to object to a
+    credential reaching stdout at all. A hash answers the same question --
+    is this the key I think it is, did it change -- and answers it better,
+    because a truncated tail collides where a digest does not.
+    """
+    if not HS_API_KEY:
+        return "none"
+    return hashlib.sha256(HS_API_KEY.encode("utf-8")).hexdigest()[:12]
 
 
 def redact(text: str) -> str:

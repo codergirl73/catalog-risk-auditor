@@ -5,8 +5,7 @@ asynchronous and the first client assumed it was not -- so it is exercised
 against a fake that answers like the documented API.
 """
 
-import unittest
-from unittest import mock
+from unittest import TestCase, main, mock
 
 from catalog_audit import config
 from catalog_audit.detector import LiveDetector
@@ -20,7 +19,7 @@ def detector():
     return det
 
 
-class TestRequestShape(unittest.TestCase):
+class TestRequestShape(TestCase):
     def setUp(self):
         self._key = config.HS_API_KEY
         config.HS_API_KEY = "test-key-123"
@@ -56,7 +55,7 @@ class TestRequestShape(unittest.TestCase):
         self.assertIn("catalog-risk-auditor", headers["User-Agent"])
 
 
-class TestPolling(unittest.TestCase):
+class TestPolling(TestCase):
     def setUp(self):
         self._interval = config.HS_POLL_INTERVAL_S
         self._timeout = config.HS_POLL_TIMEOUT_S
@@ -102,7 +101,7 @@ class TestPolling(unittest.TestCase):
             self.assertEqual(det._poll("job-4")["verdict"], "human")
 
 
-class TestCallFlow(unittest.TestCase):
+class TestCallFlow(TestCase):
     def setUp(self):
         config.HS_POLL_INTERVAL_S = 0.0
 
@@ -134,7 +133,7 @@ class TestCallFlow(unittest.TestCase):
         self.assertIn("unexpected", str(ctx.exception))
 
 
-class TestRetries(unittest.TestCase):
+class TestRetries(TestCase):
     def test_a_rejected_request_is_not_retried(self):
         """400/401/403/415/422 mean the server decided on the merits."""
         det = detector()
@@ -166,7 +165,7 @@ class TestRetries(unittest.TestCase):
         self.assertEqual(call.call_count, config.HS_MAX_RETRIES + 1)
 
 
-class TestThrottle(unittest.TestCase):
+class TestThrottle(TestCase):
     def test_requests_are_spaced_by_the_configured_gap(self):
         det = detector()
         original = config.HS_RATE_LIMIT_S
@@ -188,4 +187,4 @@ class TestThrottle(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    main()

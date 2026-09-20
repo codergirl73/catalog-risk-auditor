@@ -227,3 +227,48 @@ class TestKeyRedaction(unittest.TestCase):
                              "a table of absolutes")
         finally:
             config.HS_API_KEY = original
+
+
+class TestKeyFingerprint(unittest.TestCase):
+    """Confirming which key is loaded should not disclose any of it.
+
+    Printing the last few characters is the usual shortcut and it is a real
+    if small disclosure: length plus tail narrows a search, and a credential
+    reaching stdout is worth objecting to on principle.
+    """
+
+    def fingerprint_for(self, key):
+        from catalog_audit import config
+        original = config.HS_API_KEY
+        try:
+            config.HS_API_KEY = key
+            return config.key_fingerprint()
+        finally:
+            config.HS_API_KEY = original
+
+    def test_it_carries_no_part_of_the_key(self):
+        key = "hs_live_abcdefghijklmnopqrstuvwxyz"
+        fingerprint = self.fingerprint_for(key)
+        self.assertNotIn(fingerprint, key)
+        for size in (3, 4, 6, 8):
+            self.assertNotIn(key[-size:], fingerprint)
+            self.assertNotIn(key[:size], fingerprint)
+
+    def test_it_does_not_disclose_the_length(self):
+        short = self.fingerprint_for("hs_" + "a" * 8)
+        long = self.fingerprint_for("hs_" + "a" * 200)
+        self.assertEqual(len(short), len(long))
+
+    def test_the_same_key_always_fingerprints_the_same(self):
+        self.assertEqual(self.fingerprint_for("hs_abc123"),
+                         self.fingerprint_for("hs_abc123"))
+
+    def test_a_changed_key_is_visible_as_a_changed_fingerprint(self):
+        self.assertNotEqual(self.fingerprint_for("hs_abc123"),
+                            self.fingerprint_for("hs_abc124"))
+
+    def test_an_absent_key_says_so_rather_than_hashing_nothing(self):
+        self.assertEqual(self.fingerprint_for(""), "none")
+
+    def test_it_is_short_enough_to_read_aloud(self):
+        self.assertLessEqual(len(self.fingerprint_for("hs_abc123")), 16)

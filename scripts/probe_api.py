@@ -69,8 +69,7 @@ def check_key() -> bool:
         print(BAD + "No HS_API_KEY set. Copy .env.example to .env and put the "
                     "key in it.")
         return False
-    print(OK + "key present, ending %s (%d chars)"
-          % (config.HS_API_KEY[-4:], len(config.HS_API_KEY)))
+    print(OK + "key loaded, fingerprint %s" % config.key_fingerprint())
 
     det = LiveDetector.__new__(LiveDetector)
     req = urllib.request.Request(
