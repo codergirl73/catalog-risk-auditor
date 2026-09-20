@@ -178,3 +178,86 @@ class TestSpotlight(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _opens_comment(previous: str, char: str):
+    """Which kind of comment, if any, starts at this character pair."""
+    if previous != "/":
+        return None
+    return {"/": "line", "*": "block"}.get(char)
+
+
+def _advance_string(quote: str, escaped: bool, char: str) -> tuple:
+    """Track where a quoted literal ends. Returns (quote, escaped)."""
+    if escaped:
+        return quote, False
+    if char == "\\":
+        return quote, True
+    return (None if char == quote else quote), False
+
+
+def unterminated_string_lines(source: str) -> list:
+    """Line numbers where a quoted JS string is left open at end of line.
+
+    A Python string holding JavaScript interprets its own escapes first, so a
+    `\\n` written with one backslash becomes a real newline and silently cuts
+    a string literal -- or a comment -- in half. The page still builds and
+    still publishes; it just does nothing when opened. Both times this
+    happened the only symptom was a blank screen.
+    """
+    offenders = []
+    quote, escaped, comment, previous, line = None, False, None, "", 1
+
+    for char in source:
+        if char == "\n":
+            if quote is not None:
+                offenders.append(line)
+                quote = None
+            comment = None if comment == "line" else comment
+            line += 1
+        elif comment == "block":
+            if previous == "*" and char == "/":
+                comment = None
+        elif comment is None:
+            if quote is not None:
+                quote, escaped = _advance_string(quote, escaped, char)
+            elif char in "\"'`":
+                quote = char
+            else:
+                comment = _opens_comment(previous, char)
+        previous = char
+    return offenders
+
+
+class TestGeneratedScriptIsIntact(unittest.TestCase):
+    """The replay's JavaScript is assembled inside Python strings."""
+
+    def script(self) -> str:
+        return build_demo_site.REPLAY_JS
+
+    def test_no_string_literal_is_cut_by_a_newline(self):
+        offenders = unterminated_string_lines(self.script())
+        self.assertEqual(
+            offenders, [],
+            "a quoted string is left open at the end of line(s) %s -- an "
+            "escape was probably written with one backslash inside a "
+            "non-raw Python string" % offenders)
+
+    def test_the_newline_split_survived_as_an_escape(self):
+        # The exact line that broke twice.
+        self.assertIn("split('\\n')", self.script())
+        self.assertNotIn("split('\n", self.script())
+
+    def test_the_helper_catches_a_genuinely_broken_script(self):
+        broken = "const a = 'oops\nconst b = 2;\n"
+        self.assertEqual(unterminated_string_lines(broken), [1])
+
+    def test_the_helper_accepts_a_sound_script(self):
+        fine = "const a = 'ok';\n// a comment with an apostrophe: don't\n"
+        self.assertEqual(unterminated_string_lines(fine), [])
+
+    def test_braces_and_parens_balance(self):
+        source = self.script()
+        for opener, closer in (("{", "}"), ("(", ")"), ("[", "]")):
+            self.assertEqual(source.count(opener), source.count(closer),
+                             "unbalanced %s%s" % (opener, closer))

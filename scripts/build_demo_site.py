@@ -91,6 +91,12 @@ def track_rows(result) -> list:
             "origin": "" if origin.lower() in NOT_A_GENERATOR else origin,
             "label": (score.industry_label if score else "") or "",
             "error": (score.error if score else "") or "",
+            # The response that produced this row, so any track can be opened
+            # in full rather than only the one chosen as the spotlight.
+            "response": (score.raw.get("response")
+                         if score and isinstance(score.raw, dict)
+                         and not score.mock else None),
+            "tier_verdicts": (score.tier_verdicts or {}) if score else {},
         })
     rows.sort(key=lambda r: (TIER_ORDER.get(r["tier"], 9), r["filename"]))
     return rows
@@ -199,7 +205,9 @@ EVIDENCE_HTML = """
   </div>
 
   <div class="spotlight hidden" id="spotlight-wrap">
-    <h3>One response, in full</h3>
+    <h3>The response, in full</h3>
+    <p class="note">Click any row above to read exactly what came back for
+    that track. Nothing is reordered or trimmed.</p>
     <p class="spotfile" id="spotlight-file"></p>
     <p class="note" id="spotlight-note"></p>
     <pre id="spotlight-json"></pre>
@@ -231,6 +239,10 @@ table.tracks{width:100%;border-collapse:collapse;font-size:13px;margin-top:10px}
 table.tracks th{text-align:left;font-size:10.5px;text-transform:uppercase;
   letter-spacing:.07em;color:var(--muted);padding:7px 8px;
   border-bottom:1px solid var(--line);white-space:nowrap}
+table.tracks tbody tr{cursor:pointer}
+table.tracks tbody tr:hover td{background:#1b212b}
+table.tracks tbody tr.selected td{background:#1e2732;
+  box-shadow:inset 2px 0 0 var(--contested)}
 table.tracks td{padding:7px 8px;border-bottom:1px solid var(--line);
   color:var(--ink2);vertical-align:middle}
 table.tracks td.n{text-align:right;font-family:ui-monospace,Menlo,monospace;
@@ -272,12 +284,11 @@ table.tracks td.file{font-family:ui-monospace,Menlo,monospace;font-size:12px;
   .replay-nav{padding:12px 16px}}
 """
 
-REPLAY_JS = """
+REPLAY_JS = r"""
 'use strict';
 const SLIDES = __SLIDES__;
 const SUMMARY = __SUMMARY__;
 const TRACKS = __TRACKS__;
-const SPOTLIGHT = __SPOTLIGHT__;
 
 let current = -1;
 
@@ -294,7 +305,7 @@ function cell(text, cls) {
 function renderTracks() {
   const body = $('tracks-body');
   body.innerHTML = '';
-  TRACKS.forEach((t) => {
+  TRACKS.forEach((t, i) => {
     const tr = document.createElement('tr');
     tr.appendChild(cell(t.filename, 'file'));
 
@@ -321,28 +332,58 @@ function renderTracks() {
       attribution.textContent = '\u2014';
     }
     tr.appendChild(attribution);
+
+    if (t.response) {
+      tr.addEventListener('click', () => selectTrack(i));
+    } else {
+      tr.style.cursor = 'default';
+    }
     body.appendChild(tr);
   });
 }
 
-function renderSpotlight() {
-  const wrap = $('spotlight-wrap');
-  if (!SPOTLIGHT) { wrap.classList.add('hidden'); return; }
-  wrap.classList.remove('hidden');
-  $('spotlight-file').textContent = SPOTLIGHT.filename;
+function selectTrack(index) {
+  const track = TRACKS[index];
+  if (!track || !track.response) return;
 
-  // The response is shown complete and unaltered -- no keys reordered, no
-  // arrays trimmed -- but tier_verdicts sits at line 88 of 93, behind a long
-  // risk_segments array. So the pane opens scrolled to it rather than
-  // rearranging what the API actually sent.
-  const pretty = JSON.stringify(SPOTLIGHT.response, null, 2);
-  const lines = pretty.split('\\n');
+  const rows = $('tracks-body').querySelectorAll('tr');
+  rows.forEach((row, i) => row.classList.toggle('selected', i === index));
+
+  const wrap = $('spotlight-wrap');
+  wrap.classList.remove('hidden');
+  $('spotlight-file').textContent = track.filename;
+
+  const tiers = track.tier_verdicts || {};
+  const names = Object.keys(tiers);
+  const pairs = names.map((k) => k + ' = ' + tiers[k]).join(', ');
+  const distinct = new Set(names.map((k) => tiers[k]));
+  if (!names.length) {
+    $('spotlight-note').textContent =
+      'This response carries no tier_verdicts, so the tiering fell back to ' +
+      'the detector\u2019s own verdict field.';
+  } else if (distinct.size > 1) {
+    $('spotlight-note').textContent =
+      'Read the verdict field first: it says "' + track.verdict +
+      '". Now read tier_verdicts, the three calibrated operating points: ' +
+      pairs + '. They disagree with it. This tool tiers on those, not on the ' +
+      'headline field, which is why this track was caught rather than passed ' +
+      'into the clean base.';
+  } else {
+    $('spotlight-note').textContent =
+      'The verdict says "' + track.verdict + '" and all three calibrated ' +
+      'operating points agree: ' + pairs + '. Nothing here is borderline.';
+  }
+
+  // Shown complete and unaltered -- no keys reordered, no arrays trimmed --
+  // but tier_verdicts sits near the end behind a long risk_segments array,
+  // so the pane opens scrolled to it.
+  const pretty = JSON.stringify(track.response, null, 2);
   const pre = $('spotlight-json');
   pre.textContent = '';
   let target = null;
-  lines.forEach((line) => {
+  pretty.split('\n').forEach((line) => {
     // One block element per line, carrying no newline of its own: an
-    // inline-block that ends in \\n eats the line that follows it.
+    // inline-block that ends in \n eats the line that follows it.
     const row = document.createElement('span');
     row.textContent = line;
     if (line.indexOf('"tier_verdicts"') !== -1) {
@@ -351,26 +392,21 @@ function renderSpotlight() {
     }
     pre.appendChild(row);
   });
-  if (target) {
-    pre.scrollTop = Math.max(0, target.offsetTop - pre.offsetTop - 28);
-  }
+  pre.scrollTop = target
+    ? Math.max(0, target.offsetTop - pre.offsetTop - 28) : 0;
+}
 
-  const tiers = SPOTLIGHT.tier_verdicts || {};
-  const pairs = Object.keys(tiers).map((k) => k + ' = ' + tiers[k]).join(', ');
-  const distinct = new Set(Object.keys(tiers).map((k) => tiers[k]));
-  if (distinct.size > 1) {
-    $('spotlight-note').textContent =
-      'Read the verdict field first: it says "' + SPOTLIGHT.verdict +
-      '". Now read tier_verdicts, the three calibrated operating points: ' +
-      pairs + '. They disagree with it. This tool tiers on those, not on the ' +
-      'headline field, which is why this track was caught rather than passed ' +
-      'into the clean base. The response below is complete and unaltered; it ' +
-      'opens scrolled to that field, and scrolls up to the rest.';
-  } else {
-    $('spotlight-note').textContent =
-      'The verdict says "' + SPOTLIGHT.verdict + '" and all three calibrated ' +
-      'operating points agree: ' + pairs + '.';
+function defaultTrack() {
+  // Open on the track that teaches the most: one whose calibrated operating
+  // points disagree with its own headline verdict.
+  let fallback = -1;
+  for (let i = 0; i < TRACKS.length; i++) {
+    if (!TRACKS[i].response) continue;
+    if (fallback < 0) fallback = i;
+    const values = new Set(Object.values(TRACKS[i].tier_verdicts || {}));
+    if (values.size > 1) return i;
   }
+  return fallback;
 }
 
 function renderSlide(index) {
@@ -416,7 +452,12 @@ function renderSlide(index) {
     // zero, so the scroll-to-field below would silently do nothing.
     $('evidence').classList.remove('hidden');
     renderTracks();
-    renderSpotlight();
+    const pick = defaultTrack();
+    if (pick >= 0) {
+      selectTrack(pick);
+    } else {
+      $('spotlight-wrap').classList.add('hidden');
+    }
   } else if (slide.kind === 'summary') {
     finishPlan();
     showSummary(SUMMARY);
@@ -472,7 +513,7 @@ def build(events: list, result, out_dir: Path) -> None:
               .replace("__SLIDES__", json.dumps(slides))
               .replace("__SUMMARY__", json.dumps(webui._summary(result)))
               .replace("__TRACKS__", json.dumps(track_rows(result)))
-              .replace("__SPOTLIGHT__", json.dumps(pick_spotlight(result))))
+              )
 
     footer = (
         '<footer>Recorded %s &middot; detector %s &middot; evidence manifest '
