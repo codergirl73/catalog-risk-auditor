@@ -140,19 +140,37 @@ OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", str(ROOT / "out")))
 MIN_REDACTABLE_KEY = 8
 
 
+# Deriving the fingerprint with a slow KDF rather than a bare digest. A plain
+# SHA-256 of a 35-character random token is not actually brute-forceable, and
+# a scanner cannot know the input's entropy -- but neither can the next person
+# to point this function at something weaker, so the derivation is made
+# expensive rather than the judgement being left to them.
+#
+# The salt is fixed and is not a secret. It separates this derivation from any
+# other use of the same key; a per-run random salt would give a different
+# answer every run, which would defeat the only thing a fingerprint is for.
+_FINGERPRINT_SALT = b"catalog-risk-auditor/key-fingerprint/v1"
+_FINGERPRINT_ROUNDS = 200_000
+_FINGERPRINT_CHARS = 12
+
+
 def key_fingerprint() -> str:
     """A short, stable identifier for the configured key, carrying none of it.
 
     Printing the last few characters is the usual way to confirm which key is
-    loaded, and it is a real if small disclosure: the length and the tail
-    together narrow a search, and a static analyser is right to object to a
-    credential reaching stdout at all. A hash answers the same question --
-    is this the key I think it is, did it change -- and answers it better,
-    because a truncated tail collides where a digest does not.
+    loaded, and it is a real if small disclosure: the tail and the length
+    together narrow a search, and a credential reaching stdout is worth
+    objecting to on principle rather than on impact. This answers the same
+    question -- is this the key I think it is, did it change between runs --
+    and answers it better, because a truncated tail collides where a
+    derivation does not.
     """
     if not HS_API_KEY:
         return "none"
-    return hashlib.sha256(HS_API_KEY.encode("utf-8")).hexdigest()[:12]
+    derived = hashlib.pbkdf2_hmac(
+        "sha256", HS_API_KEY.encode("utf-8"), _FINGERPRINT_SALT,
+        _FINGERPRINT_ROUNDS)
+    return derived.hex()[:_FINGERPRINT_CHARS]
 
 
 def redact(text: str) -> str:
