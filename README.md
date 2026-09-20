@@ -1,6 +1,7 @@
 # Catalog Risk Auditor
 
 [![tests](https://github.com/codergirl73/catalog-risk-auditor/actions/workflows/tests.yml/badge.svg)](https://github.com/codergirl73/catalog-risk-auditor/actions/workflows/tests.yml)
+[![codeql](https://github.com/codergirl73/catalog-risk-auditor/actions/workflows/codeql.yml/badge.svg)](https://github.com/codergirl73/catalog-risk-auditor/actions/workflows/codeql.yml)
 [![python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://github.com/codergirl73/catalog-risk-auditor/actions)
 [![dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](SECURITY.md)
 [![license](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
@@ -162,14 +163,20 @@ overridden, and marks the document if it does.
 
 ## Tests
 
-73 tests, no framework to install:
+158 tests, no framework to install:
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-CI runs them on Python 3.10 through 3.13 and asserts the dependency tree is
-still empty on every push.
+CI runs them on Python 3.10 through 3.13, and separately gates lint (`ruff`,
+16 rule families), static security analysis (`bandit`), and cyclomatic
+complexity (`radon` — any function scoring D or worse fails the build).
+CodeQL's `security-and-quality` suite runs on every push and weekly. The
+dependency tree is asserted empty on every push.
+
+Current: zero lint findings, zero security findings, no function above C
+complexity. See [SECURITY.md](SECURITY.md).
 
 ## Disclosure
 

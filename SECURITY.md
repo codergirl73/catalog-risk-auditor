@@ -29,8 +29,26 @@ detection endpoint over HTTPS, one file per request. Nothing else is
 transmitted. The royalty sheet, the ground-truth labels, the valuation and the
 memo never leave local disk.
 
-`scripts/fetch_catalog.py` additionally downloads public, CC-licensed audio
-from Internet Archive. It sends no credentials.
+`scripts/fetch_catalog.py` and `scripts/fetch_ai_tracks.py` additionally
+download public, openly licensed audio from Internet Archive and HuggingFace.
+Neither sends a credential.
+
+## One place opens a socket
+
+`urllib.request.urlopen` is not a web client. It is a URL opener, and left
+unchecked it will open `file:///etc/passwd` and return the contents as though
+a server had sent them. Every URL this project opens is assembled from
+configuration — `HS_API_BASE` out of a `.env`, a dataset host, an archive
+identifier — and none of those is a boundary we control.
+
+`catalog_audit/net.py` is therefore the only module permitted to open a
+socket. It pins the scheme to **https** and refuses anything else, including
+plain `http`, rather than silently upgrading it: a configuration asking for
+`http` is a mistake somebody should be told about.
+
+`tests/test_net.py` walks the source of every module and fails if any of them
+calls `urllib.request.urlopen` directly. The guarantee is structural, not a
+convention.
 
 ## Spending guardrails
 
@@ -69,6 +87,27 @@ It is fenced three ways: every event stream announces it, `AuditResult.mock_mode
 records it, and `memo.render()` raises `MockModeRefused` rather than producing a
 document full of invented numbers. The `--allow-mock` override stamps a banner
 across the top of the memo. Tests cover all four behaviours.
+
+## What is enforced, and where
+
+A standard nobody checks lasts about a week, so each of these fails the build
+rather than living in a document:
+
+| Check | Tool | Gate |
+|---|---|---|
+| Runtime dependency tree is empty | CI shell | No `requirements.txt`, `pyproject.toml`, `setup.py`, `Pipfile` or `poetry.lock` may exist |
+| Lint, 16 rule families incl. security | `ruff` | Any finding fails |
+| Static security analysis | `bandit` | Any finding fails |
+| Cyclomatic complexity | `radon` | Any function scoring D or worse fails |
+| Independent recurring scan | **CodeQL** | `security-and-quality` suite, every push and weekly |
+| Secrets | CI shell | No `.env` or `*.key` tracked; the committed evidence file must stay credential-free |
+| Behaviour | `unittest` | 158 tests, Python 3.10 / 3.11 / 3.12 / 3.13 |
+
+Analysis tooling is installed in CI only. Nothing it checks is imported at
+runtime, and the test job proves that separately on all four versions.
+
+Current state: **zero lint findings, zero bandit findings, no function above
+C complexity, average A.**
 
 ## Reporting
 

@@ -180,13 +180,33 @@ Full detail in [SECURITY.md](SECURITY.md). Summary:
 
 ### Quality
 
-- 73 unit and integration tests, no test framework required — `unittest` only.
-- CI on Python 3.10, 3.11, 3.12 and 3.13.
-- Docstrings throughout, explaining *why* rather than restating the code.
-- Small modules with one job each; no module over ~250 lines.
-- MIT licensed.
+Measured, not asserted. Every figure below is produced by a tool in CI:
 
----
+| | |
+|---|---|
+| Tests | **158**, `unittest` only — no framework to install |
+| Source / test lines | 3,750 / 1,337 |
+| Lint findings (`ruff`, 16 rule families) | **0** |
+| Security findings (`bandit`) | **0** |
+| Average cyclomatic complexity (`radon`) | **A (3.97)** |
+| Functions scoring D or worse | **0** — CI fails the build if one appears |
+| Maintainability index | **A** on every module |
+| Python versions tested | 3.10, 3.11, 3.12, 3.13 |
+
+Getting there meant real refactoring rather than suppression. `map_response`
+scored **F (42)** — it had accreted one branch per schema guess; each guess is
+now a named strategy tried in order. `AuditAgent.run` was **D (29)** as a
+single 150-line generator and is now one generator per declared plan step.
+`memo.render` was **D (26)** and ended in a twenty-eight-argument positional
+format call, where inserting a field silently shifts every field after it.
+
+Two suppressions exist in the whole codebase. Both are annotated with the
+reason: a seeded `random` used for demonstration royalty figures, and ruff's
+`S310`, which is superseded by a stronger control described below.
+
+- Docstrings throughout, explaining *why* rather than restating the code
+- Small modules, one job each; none over ~700 lines including its prose
+- MIT licensed
 
 # Track 3 — Open Track / Bring Your Own Project
 
