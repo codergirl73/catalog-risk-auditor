@@ -1,24 +1,27 @@
 """HumanStandard detection client.
 
-=============================================================================
- IF THE API SHAPE IS WRONG, FIX IT HERE AND NOWHERE ELSE
-=============================================================================
-HumanStandard does not publish open API docs, so the request format and the
-response mapping below are a best guess written defensively. Two functions are
-the only things that should need changing:
+The integration is written against the published API at docs.hsverify.com:
 
-    LiveDetector._build_request()  -- upload format and auth header
-    map_response()                 -- their JSON -> (ai_score, confidence)
+    POST {base}/api/analyze          multipart file=... -> {"job_id": ...}
+    GET  {base}/api/jobs/{id}/status poll until status == "complete"
 
-To see what you actually get back:
+It is asynchronous. Analysis returns a job id and the verdict is collected by
+polling; cold starts are documented at 20-30 seconds. `?detail=full` is
+requested by default because `tier_verdicts` -- HumanStandard's three
+calibrated operating points -- is what this tool tiers on.
 
-    python3 -m catalog_audit.detector path/to/track.mp3
+Two things are worth knowing before changing anything here:
 
-Everything downstream consumes TrackScore and is indifferent to their schema.
-=============================================================================
+  * `verdict` has three values, not two: "ai", "human" and "uncertain". The
+    detector itself declines to call some tracks, and that refusal is carried
+    through to the buyer rather than being rounded to the nearer answer.
+
+  * `?mock=<scenario>` returns a real-shaped fixture and bills nothing.
+    Responses carry "mock": true, which is propagated onto TrackScore so a
+    fixture can never end up in a memo. Set HS_MOCK_SCENARIO to use it.
 
 Responses are cached on disk keyed by file hash. Score a catalog once, then
-re-run the analysis as often as you like without spending another call, and
+re-run the analysis as often as you like without spending another credit, and
 demo with the network unplugged.
 """
 
@@ -30,6 +33,7 @@ import mimetypes
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
@@ -71,6 +75,29 @@ def map_response(payload: dict) -> tuple:
         inner = payload.get(key)
         if isinstance(inner, dict):
             flat.update(inner)
+
+    # The documented HumanStandard shape: a three-valued verdict plus a
+    # confidence in it. Everything below this is fallback for a schema we did
+    # not anticipate.
+    verdict = str(flat.get("verdict") or "").strip().lower()
+    raw_conf = flat.get("confidence")
+    if verdict in ("ai", "human", "uncertain") and isinstance(
+            raw_conf, (int, float)) and not isinstance(raw_conf, bool):
+        c = float(raw_conf)
+        if c > 1.0:
+            c /= 100.0
+        c = max(0.0, min(1.0, c))
+        # Confidence is confidence *in the verdict*, so it pushes away from the
+        # midpoint in whichever direction the verdict points. An uncertain
+        # verdict sits at 50 whatever its confidence, which is the honest
+        # place for it.
+        if verdict == "ai":
+            score = 50.0 + c * 50.0
+        elif verdict == "human":
+            score = 50.0 - c * 50.0
+        else:
+            score = 50.0
+        return round(score, 1), round(c, 3)
 
     ai_score: Optional[float] = None
     for key in _AI_KEYS:
@@ -120,6 +147,59 @@ def map_response(payload: dict) -> tuple:
 
     return round(max(0.0, min(100.0, ai_score)), 1), round(
         max(0.0, min(1.0, confidence)), 3)
+
+
+def parse_result(payload: dict) -> dict:
+    """Pull the fields a buyer-facing report can actually use out of a result.
+
+    Tolerant by design: every field is optional, because a response that is
+    missing `origin_map` should still produce a verdict rather than an
+    exception.
+    """
+    if not isinstance(payload, dict):
+        return {}
+
+    inner = payload.get("result")
+    if isinstance(inner, dict):
+        payload = {**payload, **inner}
+
+    def _s(key, default=""):
+        val = payload.get(key)
+        return str(val) if isinstance(val, (str, int, float)) else default
+
+    def _f(key):
+        val = payload.get(key)
+        return float(val) if isinstance(val, (int, float)) and not isinstance(
+            val, bool) else 0.0
+
+    tiers = payload.get("tier_verdicts")
+    tiers = {k: str(v).lower() for k, v in tiers.items()} if isinstance(
+        tiers, dict) else {}
+
+    timeline = payload.get("risk_timeline")
+    timeline = [float(x) for x in timeline
+                if isinstance(x, (int, float)) and not isinstance(x, bool)
+                ] if isinstance(timeline, list) else []
+
+    origin_map = payload.get("origin_map")
+    origin_map = origin_map if isinstance(origin_map, dict) else {}
+
+    return {
+        "verdict": _s("verdict").lower(),
+        "tier_verdicts": tiers,
+        "origin": _s("origin"),
+        "origin_confidence": _f("origin_confidence"),
+        "origin_summary": str(origin_map.get("summary_line") or ""),
+        "origin_map_evidence": _s("origin_map_evidence"),
+        "headline_verdict": _s("headline_verdict").lower(),
+        "industry_label": _s("industry_label"),
+        "industry_label_status": _s("industry_label_status").lower(),
+        "risk_timeline": timeline,
+        "duration_s": _f("duration_sec"),
+        "model_version": _s("model_version"),
+        "mock": payload.get("mock") is True,
+        "mock_scenario": _s("mock_scenario"),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -186,9 +266,10 @@ class LiveDetector:
             )
 
         return TrackScore(
-            filename=p.name, path=str(p), ai_score=ai_score, confidence=confidence,
-            provider=self.name, sha256=digest, cached=cached,
-            raw={"response": payload},
+            filename=p.name, path=str(p), ai_score=ai_score,
+            confidence=confidence, provider=self.name, sha256=digest,
+            cached=cached, raw={"response": payload},
+            **parse_result(payload),
         )
 
     @staticmethod
@@ -249,6 +330,16 @@ class LiveDetector:
             return {"Authorization": key}
         return {"Authorization": "Bearer " + key, "X-API-Key": key}
 
+    def _query(self, extra: dict = None) -> str:
+        """Query string shared by analyze and status."""
+        params = {}
+        if config.HS_DETAIL:
+            params["detail"] = config.HS_DETAIL
+        if config.HS_MOCK_SCENARIO:
+            params["mock"] = config.HS_MOCK_SCENARIO
+        params.update(extra or {})
+        return ("?" + urllib.parse.urlencode(params)) if params else ""
+
     def _build_request(self, p: Path) -> urllib.request.Request:
         """Multipart upload. Field name and auth style both come from config."""
         boundary = uuid.uuid4().hex
@@ -261,10 +352,20 @@ class LiveDetector:
             p.read_bytes(),
             ("\r\n--%s--\r\n" % boundary).encode(),
         ])
-        req = urllib.request.Request(
-            config.HS_API_BASE + config.HS_DETECT_PATH, data=body, method="POST")
+        url = config.HS_API_BASE + config.HS_DETECT_PATH + self._query()
+        req = urllib.request.Request(url, data=body, method="POST")
         req.add_header("Content-Type",
                        "multipart/form-data; boundary=%s" % boundary)
+        for name, value in self.auth_headers().items():
+            req.add_header(name, value)
+        req.add_header("Accept", "application/json")
+        return req
+
+    def _status_request(self, job_id: str) -> urllib.request.Request:
+        path = config.HS_STATUS_PATH.replace(
+            "{job_id}", urllib.parse.quote(str(job_id), safe=""))
+        req = urllib.request.Request(
+            config.HS_API_BASE + path + self._query(), method="GET")
         for name, value in self.auth_headers().items():
             req.add_header(name, value)
         req.add_header("Accept", "application/json")
@@ -285,15 +386,60 @@ class LiveDetector:
             except RuntimeError as exc:
                 last = exc
                 msg = str(exc)
-                # Do not burn retries on a request the server will reject again.
-                if any(code in msg for code in (" 400:", " 401:", " 403:", " 415:")):
+                # Do not burn retries on a request the server will reject
+                # again on its merits.
+                if any(code in msg for code in
+                       (" 400:", " 401:", " 403:", " 415:", " 422:")):
                     raise
                 if attempt < config.HS_MAX_RETRIES:
                     time.sleep(1.5 * (attempt + 1))
         raise last
 
     def _call(self, p: Path) -> dict:
-        req = self._build_request(p)
+        """Submit, then poll until the verdict lands."""
+        submitted = self._fetch(self._build_request(p))
+
+        job_id = submitted.get("job_id") or submitted.get("id")
+        if not job_id:
+            # Some endpoints answer synchronously. If a verdict already came
+            # back, take it rather than insisting on a job id.
+            if submitted.get("verdict") or submitted.get("result"):
+                return submitted
+            raise RuntimeError(
+                "No job_id in the analyze response. Keys were: "
+                + ", ".join(sorted(str(k) for k in submitted)))
+
+        return self._poll(job_id)
+
+    def _poll(self, job_id: str) -> dict:
+        """Poll a job to completion.
+
+        Cold starts are documented at 20-30s, so the timeout is generous and
+        the interval is not. A job that never completes raises rather than
+        returning something half-finished.
+        """
+        deadline = time.monotonic() + config.HS_POLL_TIMEOUT_S
+        last_status = "unknown"
+        while time.monotonic() < deadline:
+            payload = self._fetch(self._status_request(job_id))
+            last_status = str(payload.get("status") or "").lower()
+
+            if last_status == "complete":
+                result = payload.get("result")
+                return result if isinstance(result, dict) else payload
+            if last_status == "failed":
+                raise RuntimeError(
+                    "Analysis failed for job %s: %s"
+                    % (job_id, payload.get("error") or "no reason given"))
+
+            time.sleep(config.HS_POLL_INTERVAL_S)
+
+        raise RuntimeError(
+            "Job %s did not complete within %.0fs (last status: %s)"
+            % (job_id, config.HS_POLL_TIMEOUT_S, last_status))
+
+    @staticmethod
+    def _fetch(req: urllib.request.Request) -> dict:
         try:
             with urllib.request.urlopen(req, timeout=config.HS_TIMEOUT_S) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")

@@ -31,7 +31,7 @@ class TrackScore:
 
     filename: str
     path: str
-    ai_score: float           # 0-100, higher means more likely AI-generated
+    ai_score: float           # 0-100, derived from verdict + confidence
     confidence: float         # 0-1, the detector's own confidence
     provider: str
     sha256: str = ""
@@ -40,9 +40,52 @@ class TrackScore:
     error: str = ""
     raw: dict = field(default_factory=dict)
 
+    # --- what HumanStandard actually returns -------------------------------
+    verdict: str = ""              # "ai" | "human" | "uncertain"
+    tier_verdicts: dict = field(default_factory=dict)
+    # press_safe (~0% FPR) | human_safe (~1-2%) | recall (~5-10%)
+
+    origin: str = ""               # detected generator, e.g. "suno", "udio"
+    origin_confidence: float = 0.0
+    origin_summary: str = ""       # plain-language neighbourhood statement
+    origin_map_evidence: str = ""  # permanent URL to the similarity map image
+
+    # IFPI/RIAA July 2026 GenAI labeling standard
+    headline_verdict: str = ""     # ai_generated | ai_generated_suspected | human
+    industry_label: str = ""       # "AI-Generated" when it meets the definition
+    industry_label_status: str = ""  # meets_definition | suspected
+
+    risk_timeline: list = field(default_factory=list)
+    model_version: str = ""
+
+    # True when the response came from HumanStandard's ?mock= fixtures. The
+    # API sets this itself; it is propagated so a fixture cannot reach a memo.
+    mock: bool = False
+    mock_scenario: str = ""
+
     @property
     def ok(self) -> bool:
         return not self.error
+
+    @property
+    def tier_disagreement(self) -> bool:
+        """True when the three operating points do not agree.
+
+        HumanStandard's own guidance: a track that is ai at recall but human at
+        human-safe is borderline and belongs in manual review. Disagreement is
+        the signal, not a nuisance to be averaged away.
+        """
+        values = [v for v in self.tier_verdicts.values() if v]
+        return len(set(values)) > 1
+
+    @property
+    def peak_risk_window(self) -> tuple:
+        """(index, risk) of the most AI-looking window, for reviewer context."""
+        if not self.risk_timeline:
+            return (-1, 0.0)
+        best = max(range(len(self.risk_timeline)),
+                   key=lambda i: self.risk_timeline[i])
+        return (best, self.risk_timeline[best])
 
 
 @dataclass

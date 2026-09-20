@@ -121,6 +121,24 @@ class AuditAgent:
                 )
         result.assets = assets
 
+        # HumanStandard's ?mock= fixtures come back over the real API, from a
+        # real key, with real field shapes -- and carry "mock": true. A run
+        # built on them is a mock run no matter which detector produced it, so
+        # the flag is promoted onto the result and the memo refuses it.
+        mocked = [a for a in assets if a.score and a.score.mock]
+        if mocked:
+            result.mock_mode = True
+            scenarios = sorted({a.score.mock_scenario for a in mocked
+                                if a.score.mock_scenario})
+            yield _ev(
+                "warn", "API mock responses detected",
+                "%d of %d responses were HumanStandard fixtures%s, not real "
+                "detections. The run is marked mock and the memo will refuse "
+                "to render. Unset HS_MOCK_SCENARIO for a real audit."
+                % (len(mocked), len(assets),
+                   " (%s)" % ", ".join(scenarios) if scenarios else ""),
+            )
+
         yield _ev(
             "tool_result", "budget spent",
             "%d live calls spent of %d budgeted, %d served from cache, "

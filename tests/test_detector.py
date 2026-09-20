@@ -13,7 +13,7 @@ from pathlib import Path
 
 from catalog_audit import config
 from catalog_audit.detector import (LiveDetector, MockDetector, get_detector,
-                                    map_response, sha256_file)
+                                    map_response, parse_result, sha256_file)
 from catalog_audit.models import Budget
 
 
@@ -163,3 +163,101 @@ class TestHashAndSelection(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRealSchema(unittest.TestCase):
+    """The documented HumanStandard response, as published at docs.hsverify.com."""
+
+    REAL = {
+        "verdict": "ai",
+        "confidence": 0.91,
+        "origin": "suno",
+        "origin_confidence": 0.82,
+        "risk_timeline": [0.12, 0.14, 0.88, 0.91, 0.89, 0.87],
+        "origin_map_evidence": "https://example.com/map.png",
+        "origin_map": {
+            "nearest_population": "Suno",
+            "summary_line": "24 of its 25 nearest reference recordings are "
+                            "Suno generations.",
+            "neighborhood": {"k": 25, "dominant": True,
+                             "counts": {"Suno": 24, "Udio": 1}},
+        },
+        "headline_verdict": "ai_generated",
+        "industry_label": "AI-Generated",
+        "industry_label_status": "meets_definition",
+        "tier_verdicts": {"press_safe": "ai", "human_safe": "ai",
+                          "recall": "ai"},
+        "duration_sec": 187.4,
+        "model_version": "2026-04-29",
+        "processed_at": "2026-04-29T10:43:01Z",
+    }
+
+    def test_ai_verdict_scores_high(self):
+        ai, conf = map_response(self.REAL)
+        self.assertGreater(ai, config.SUSPECT_FLOOR)
+        self.assertAlmostEqual(conf, 0.91)
+
+    def test_human_verdict_scores_low(self):
+        ai, _ = map_response({"verdict": "human", "confidence": 0.95})
+        self.assertLess(ai, config.CLEAN_CEILING)
+
+    def test_uncertain_verdict_sits_at_the_midpoint(self):
+        # The detector declining to call it must not be rounded to either side.
+        ai, _ = map_response({"verdict": "uncertain", "confidence": 0.55})
+        self.assertGreater(ai, config.CLEAN_CEILING)
+        self.assertLess(ai, config.SUSPECT_FLOOR)
+
+    def test_confidence_moves_the_score_away_from_the_midpoint(self):
+        low, _ = map_response({"verdict": "ai", "confidence": 0.55})
+        high, _ = map_response({"verdict": "ai", "confidence": 0.99})
+        self.assertLess(low, high)
+
+    def test_every_evidence_field_is_extracted(self):
+        got = parse_result(self.REAL)
+        self.assertEqual(got["origin"], "suno")
+        self.assertEqual(got["industry_label"], "AI-Generated")
+        self.assertEqual(got["tier_verdicts"]["human_safe"], "ai")
+        self.assertIn("Suno generations", got["origin_summary"])
+        self.assertEqual(got["origin_map_evidence"],
+                         "https://example.com/map.png")
+        self.assertEqual(len(got["risk_timeline"]), 6)
+        self.assertAlmostEqual(got["duration_s"], 187.4)
+
+    def test_result_may_be_nested_under_result(self):
+        got = parse_result({"status": "complete", "result": self.REAL})
+        self.assertEqual(got["verdict"], "ai")
+
+    def test_a_sparse_response_still_parses(self):
+        got = parse_result({"verdict": "human", "confidence": 0.9})
+        self.assertEqual(got["verdict"], "human")
+        self.assertEqual(got["origin"], "")
+        self.assertEqual(got["tier_verdicts"], {})
+
+    def test_api_mock_flag_is_carried_through(self):
+        got = parse_result({**self.REAL, "mock": True,
+                            "mock_scenario": "ai"})
+        self.assertTrue(got["mock"])
+        self.assertEqual(got["mock_scenario"], "ai")
+
+    def test_a_real_response_is_not_flagged_as_mock(self):
+        self.assertFalse(parse_result(self.REAL)["mock"])
+
+
+class TestUrls(unittest.TestCase):
+    def test_status_url_interpolates_the_job_id(self):
+        det = LiveDetector.__new__(LiveDetector)
+        url = det._status_request("job-abc").full_url
+        self.assertIn("/api/jobs/job-abc/status", url)
+
+    def test_detail_full_is_requested_by_default(self):
+        det = LiveDetector.__new__(LiveDetector)
+        self.assertIn("detail=full", det._query())
+
+    def test_mock_scenario_reaches_the_query_string(self):
+        original = config.HS_MOCK_SCENARIO
+        try:
+            config.HS_MOCK_SCENARIO = "suspicious"
+            det = LiveDetector.__new__(LiveDetector)
+            self.assertIn("mock=suspicious", det._query())
+        finally:
+            config.HS_MOCK_SCENARIO = original

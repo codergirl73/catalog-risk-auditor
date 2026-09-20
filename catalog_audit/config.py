@@ -41,10 +41,24 @@ def _f(name: str, default: float) -> float:
 
 # --- HumanStandard API ------------------------------------------------------
 HS_API_KEY = os.environ.get("HS_API_KEY", "").strip()
-# NB: api.hsverify.com does not resolve -- confirmed by scripts/probe_api.py.
-# The real base URL has to come from HumanStandard. Set HS_API_BASE in .env.
-HS_API_BASE = os.environ.get("HS_API_BASE", "https://api.hsverify.com").rstrip("/")
-HS_DETECT_PATH = os.environ.get("HS_DETECT_PATH", "/v1/detect")
+HS_API_BASE = os.environ.get(
+    "HS_API_BASE", "https://app.jobsbyhumans.com").rstrip("/")
+HS_DETECT_PATH = os.environ.get("HS_DETECT_PATH", "/api/analyze")
+HS_STATUS_PATH = os.environ.get("HS_STATUS_PATH", "/api/jobs/{job_id}/status")
+
+# /api/analyze is asynchronous: it returns a job_id and the verdict is
+# collected by polling. Cold starts are documented at 20-30s.
+HS_POLL_INTERVAL_S = _f("HS_POLL_INTERVAL_S", 2.0)
+HS_POLL_TIMEOUT_S = _f("HS_POLL_TIMEOUT_S", 300.0)
+
+# "full" adds risk_segments and tier_verdicts. tier_verdicts is what this tool
+# tiers on, so full is the default rather than an extra.
+HS_DETAIL = os.environ.get("HS_DETAIL", "full").strip()
+
+# HumanStandard's own mock mode: ?mock=human|ai|suspicious|no_vocal returns a
+# real-shaped fixture and bills nothing. Responses carry "mock": true, which
+# this tool propagates so a fixture can never reach a memo. Empty = off.
+HS_MOCK_SCENARIO = os.environ.get("HS_MOCK_SCENARIO", "").strip()
 HS_TIMEOUT_S = _f("HS_TIMEOUT_S", 60.0)
 HS_MAX_RETRIES = int(_f("HS_MAX_RETRIES", 2))
 HS_RATE_LIMIT_S = _f("HS_RATE_LIMIT_S", 0.35)   # polite pause between calls
@@ -64,12 +78,17 @@ HS_MAX_UPLOAD_MB = _f("HS_MAX_UPLOAD_MB", 20.0)
 # settable from .env so that whatever scripts/probe_api.py discovers about the
 # real API becomes a config change rather than a code change.
 #   bearer | x-api-key | api-key | authorization-raw | both
-HS_AUTH_STYLE = os.environ.get("HS_AUTH_STYLE", "both").strip().lower()
+HS_AUTH_STYLE = os.environ.get("HS_AUTH_STYLE", "bearer").strip().lower()
 HS_FILE_FIELD = os.environ.get("HS_FILE_FIELD", "file").strip() or "file"
 
 CACHE_DIR = Path(os.environ.get("HS_CACHE_DIR", str(ROOT / ".cache")))
 
 # --- Tier thresholds --------------------------------------------------------
+# These are the FALLBACK. When the response carries tier_verdicts -- which it
+# does whenever HS_DETAIL is "full" -- assets are tiered on HumanStandard's own
+# calibrated operating points instead, and these numbers are not consulted.
+# See tiering.py.
+#
 # Below CLEAN_CEILING: treated as human. Above SUSPECT_FLOOR: treated as
 # at-risk. Everything between is contested and goes to a person.
 CLEAN_CEILING = _f("CLEAN_CEILING", 25.0)
@@ -95,9 +114,17 @@ OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", str(ROOT / "out")))
 
 def thresholds_summary() -> str:
     return (
-        f"clean < {CLEAN_CEILING:.0f} | contested {CLEAN_CEILING:.0f}-"
-        f"{SUSPECT_FLOOR:.0f} | suspect > {SUSPECT_FLOOR:.0f} | "
-        f"min confidence {MIN_CONFIDENCE:.2f}"
+        "suspect when HumanStandard's human-safe tier (~1-2% FPR) says ai | "
+        "clean when its recall tier (~5-10% FPR) says human | "
+        "contested when the tiers disagree"
+    )
+
+
+def fallback_thresholds_summary() -> str:
+    return (
+        f"fallback scoring: clean < {CLEAN_CEILING:.0f} | contested "
+        f"{CLEAN_CEILING:.0f}-{SUSPECT_FLOOR:.0f} | suspect > "
+        f"{SUSPECT_FLOOR:.0f} | min confidence {MIN_CONFIDENCE:.2f}"
     )
 
 

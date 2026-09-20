@@ -80,7 +80,10 @@ class TestContent(unittest.TestCase):
         self.assertIn("ground truth", self.html.lower())
 
     def test_states_the_thresholds_it_used(self):
-        self.assertIn("clean &lt; 25", self.html)
+        # Tiering is on HumanStandard's calibrated operating points, so the
+        # memo must name those rather than a number we invented.
+        self.assertIn("human-safe", self.html)
+        self.assertIn("recall", self.html)
 
     def test_carries_the_not_a_legal_opinion_disclaimer(self):
         self.assertIn("not a legal opinion", self.html)

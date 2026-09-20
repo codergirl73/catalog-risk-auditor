@@ -163,3 +163,41 @@ class TestAuditTrail(CatalogFixture):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestApiMockPropagation(CatalogFixture):
+    """A fixture from the real API is still a fixture."""
+
+    def test_api_mock_responses_mark_the_whole_run_mock(self):
+        from catalog_audit.models import TrackScore
+
+        class MockingApi:
+            name, is_mock = "humanstandard", False
+
+            def __init__(self):
+                self.budget = None
+
+            def is_cached(self, digest):
+                return False
+
+            def detect(self, path, digest=""):
+                from pathlib import Path as P
+                return TrackScore(
+                    filename=P(path).name, path=str(path), ai_score=95.0,
+                    confidence=0.9, provider=self.name, verdict="ai",
+                    mock=True, mock_scenario="ai",
+                )
+
+        agent = AuditAgent(force_mock=True)
+        agent.detector = MockingApi()
+        events = list(agent.run(self.catalog))
+
+        self.assertTrue(agent.result.mock_mode)
+        self.assertTrue(any(e.type == "warn" and "mock" in e.title.lower()
+                            for e in events))
+
+    def test_a_real_run_is_not_marked_mock(self):
+        agent, _ = self.run_audit()
+        # force_mock=True uses the local mock detector, which is separately
+        # flagged; what matters here is that no API mock flag was invented.
+        self.assertFalse(any(a.score.mock for a in agent.result.assets))
