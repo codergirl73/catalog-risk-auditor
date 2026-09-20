@@ -133,6 +133,23 @@ evidence slide.*
 
 ---
 
+## Between takes — get a fresh live call
+
+The response is cached by file hash, so the same track will not make a second
+live call. Stage another and just click Run again; the server picks it up
+without restarting:
+
+```bash
+python3 scripts/stage_live_demo.py --ai      # expect a suspect verdict
+python3 scripts/stage_live_demo.py --human   # expect clean
+```
+
+There are 6 AI and 102 human tracks left unscored, so takes are not the
+constraint. An AI track gives the better live moment, but say which kind you
+staged when you narrate it.
+
+---
+
 ## If the live call is slow
 
 If Tab 1 hasn't returned by 1:10, don't wait on it. Say:
