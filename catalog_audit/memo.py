@@ -331,8 +331,13 @@ def render(result: AuditResult, allow_mock: bool = False) -> str:
         score = "%.0f" % a.ai_score if a.ai_score >= 0 else "&mdash;"
         title = a.royalty.title if a.royalty and a.royalty.title else a.filename
         artist = a.royalty.artist if a.royalty else ""
+        # Only name an actual generator. "human" and "uncertain" are the API
+        # declining to attribute, and a tag saying "Human" beside a row
+        # already marked CLEAN is noise.
         origin = ""
-        if a.score and a.score.ok and a.score.origin:
+        if (a.score and a.score.ok and a.score.origin
+                and a.score.origin.lower() not in ("human", "uncertain",
+                                                   "unknown", "none")):
             origin = '<span class="tag">%s</span>' % e(a.score.origin.title())
         rows.append(
             "<tr><td>%s</td><td>%s</td><td class='n'>%s</td>"

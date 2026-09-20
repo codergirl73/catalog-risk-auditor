@@ -235,24 +235,69 @@ figure, an escrow recommendation, and its own error rate.
 
 ## Results from the demo run
 
-Fill from `out/risk_memo.html` and `out/audit.json` after a real run.
+Every number below comes from a live HumanStandard API run. Raw output in
+`out/audit.json`, the memo in `out/risk_memo.html`, one raw API response in
+`out/api_evidence.json`.
 
-- Catalog size: `[ ]` tracks (116 human, `[ ]` AI)
-- API calls spent: `[ ]` of 200 credits
-- Reported annual revenue: `[ ]`
-- Clean / contested / suspect: `[ ]` / `[ ]` / `[ ]`
-- Suspect share **by count**: `[ ]`% — **by revenue**: `[ ]`%
-- Recommended escrow: `[ ]` against an asking price of `[ ]`
-- Precision / recall against planted labels: `[ ]` / `[ ]`
-- Human tracks wrongly flagged: `[ ]`
-- Assets routed to human review: `[ ]`
+**Catalog scanned:** 16 tracks — 10 human (Internet Archive netlabels, 10
+distinct artists) and 6 AI (Suno and Udio, from SONICS). A 130-track catalog
+is assembled in the repo; 16 were scanned because the hackathon key carries
+200 credits at one credit per track, and the point is demonstrable at this
+size. **17 credits used in total**, including the evidence call.
 
-> **The line worth saying out loud:** suspect tracks are `[ ]`% of the catalog
-> by count but only `[ ]`% of its revenue. Synthetic uploads accumulate far
-> faster than they earn — which is why a count-based audit misprices the deal
-> in both directions.
+| | |
+|---|---|
+| Tracks audited | 16 |
+| Reported annual revenue | $48,000 |
+| Asking price at 15× | $720,000 |
+| Clean / contested / suspect | 8 / 2 / 6 |
+| Suspect share **by count** | **37.5%** |
+| Suspect share **by revenue** | **17.4%** |
+| Revenue on contested assets | $6,166 (12.8%) |
+| **Recommended escrow** | **$171,710** |
+| Planted AI tracks caught | 6 of 6 |
+| AI tracks missed | 0 |
+| Human tracks wrongly flagged | **0** |
+| Precision / recall | 1.00 / 1.00 |
+| Assets routed to human review | 2 |
+| Attribution: correct generator named | 1 of 6 |
+| Attribution: declined by the detector | 5 of 6 |
 
----
+Six planted tracks is a small sample, and the memo says so in as many words
+rather than presenting 1.00 as a measured rate. That caveat is generated
+automatically whenever fewer than ten tracks are planted.
+
+### The finding worth leading with
+
+Suspect assets are **37.5% of the catalog by count but 17.4% of its revenue**.
+Synthetic uploads accumulate faster than they earn, so a count-based read of
+this catalog overstates the damage by more than a factor of two — and a
+seller quoting "96% of my tracks are fine" would be describing a different
+risk from the one the buyer is taking.
+
+### The moment that justifies the whole design
+
+`sonics__fake_00524_udio_1.mp3` is a real Udio generation. HumanStandard's
+top-level verdict on it is **`"human"`**, at 29% confidence, and its
+similarity map reports that *24 of its 25 nearest reference recordings are
+verified human recordings*.
+
+Its calibrated operating points say `{press_safe: human, human_safe: ai,
+recall: ai}`.
+
+Because this tool tiers on the operating points rather than the headline
+verdict, the track is caught and escrowed. **A tool that read `verdict` — the
+obvious thing to read — would have passed a synthetic recording into the
+acquirable base.** The memo states the disagreement on the asset's own row
+rather than hiding it.
+
+### What the agent refused to do
+
+Two human tracks produced split verdicts across the operating points. Neither
+was called. Both went to the review queue with the split stated, the risk
+peak timestamped (0:20 and 0:33), and a link to the similarity-map image —
+carrying $3,551 and $2,614 of annual revenue respectively, so the reviewer
+starts where the money is.
 
 ## Tools, models, frameworks and runtimes
 

@@ -201,3 +201,29 @@ class TestApiMockPropagation(CatalogFixture):
         # force_mock=True uses the local mock detector, which is separately
         # flagged; what matters here is that no API mock flag was invented.
         self.assertFalse(any(a.score.mock for a in agent.result.assets))
+
+
+class TestReviewQueueEconomics(CatalogFixture):
+    """A review queue without money on it is a to-do list, not a priority."""
+
+    def test_entries_carry_the_revenue_they_are_worth(self):
+        agent, _ = self.run_audit()
+        queued = {i["filename"]: i["annual_usd"]
+                  for i in agent.result.review_queue}
+        by_name = {a.filename: a.annual_usd for a in agent.result.assets}
+        self.assertTrue(queued, "nothing was escalated in this fixture")
+        for name, usd in queued.items():
+            self.assertEqual(usd, by_name[name],
+                             "%s escalated with the wrong revenue" % name)
+
+    def test_at_least_one_entry_is_non_zero(self):
+        # Guards the ordering bug: the queue used to be built before the
+        # revenue join, so every entry read $0.
+        agent, _ = self.run_audit()
+        self.assertTrue(any(i["annual_usd"] > 0
+                            for i in agent.result.review_queue))
+
+    def test_queue_is_ordered_by_what_is_at_stake(self):
+        agent, _ = self.run_audit()
+        amounts = [i["annual_usd"] for i in agent.result.review_queue]
+        self.assertEqual(amounts, sorted(amounts, reverse=True))

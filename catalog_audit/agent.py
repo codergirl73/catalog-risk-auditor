@@ -180,14 +180,11 @@ class AuditAgent:
         )
 
         # 4. escalate ---------------------------------------------------
+        # The queue itself is assembled after the revenue join below, because
+        # an entry is only actionable once it carries what the asset earns --
+        # a reviewer with limited time should start at the top of the money,
+        # not the top of the alphabet.
         yield _ev("step", PLAN[3])
-        result.review_queue = [
-            {"filename": a.filename,
-             "ai_score": a.ai_score,
-             "annual_usd": a.annual_usd,
-             "reason": a.notes[-1] if a.notes else ""}
-            for a in review
-        ]
         yield _ev(
             "tool_result", "review_queue",
             "%d assets routed to human review" % len(review),
@@ -212,6 +209,14 @@ class AuditAgent:
         else:
             yield _ev("tool_result", "load_royalties",
                       "No revenue sheet supplied; exposure will be by count only.")
+
+        result.review_queue = [
+            {"filename": a.filename,
+             "ai_score": a.ai_score,
+             "annual_usd": a.annual_usd,
+             "reason": a.notes[-1] if a.notes else ""}
+            for a in sorted(review, key=lambda a: -a.annual_usd)
+        ]
 
         # 6. value ------------------------------------------------------
         yield _ev("step", PLAN[5])

@@ -139,9 +139,11 @@ def attribution_summary(ev: Evaluation) -> str:
     """One line on how well the generator attribution did."""
     if not ev.origin_labelled:
         return ""
-    parts = ["Of %d correctly flagged AI tracks whose true generator is known, "
-             "%d were attributed to the right one"
-             % (ev.origin_labelled, ev.origin_correct)]
+    parts = ["Of %d correctly flagged AI track%s whose true generator is "
+             "known, %d %s attributed to the right one"
+             % (ev.origin_labelled, "" if ev.origin_labelled == 1 else "s",
+                ev.origin_correct,
+                "was" if ev.origin_correct == 1 else "were")]
     if ev.origin_wrong:
         parts.append("%d to the wrong one (%s)"
                      % (ev.origin_wrong, "; ".join(ev.origin_confusions[:3])))
@@ -158,9 +160,10 @@ def summary(ev: Evaluation) -> str:
 
     planted = ev.true_positive + ev.false_negative + ev.contested_ai
     parts = [
-        "Against %d labelled tracks: %d of %d planted AI tracks were caught, "
-        "%d were missed, and %d landed in the contested band."
-        % (ev.labelled, ev.true_positive, planted, ev.false_negative,
+        "Against %d labelled tracks: %d of %d planted AI track%s caught, "
+        "%d missed, and %d landed in the contested band."
+        % (ev.labelled, ev.true_positive, planted,
+           " was" if planted == 1 else "s were", ev.false_negative,
            ev.contested_ai)
     ]
     if ev.false_positive:
@@ -186,9 +189,9 @@ def summary(ev: Evaluation) -> str:
 
     if 0 < planted < SMALL_SAMPLE:
         parts.append(
-            "Only %d AI track%s was planted, so these are counts rather than "
+            "Only %d AI track%s planted, so these are counts rather than "
             "measured rates \u2014 the confidence interval on a sample this "
             "size is wide enough that the figures should be read as "
-            "indicative." % (planted, "" if planted == 1 else "s were"))
+            "indicative." % (planted, " was" if planted == 1 else "s were"))
 
     return " ".join(parts)
