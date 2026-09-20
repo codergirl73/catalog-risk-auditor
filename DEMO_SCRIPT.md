@@ -30,7 +30,7 @@ takes about 48 seconds — that wait is deliberate and you talk over it.
 >
 > Nobody checks whether a human made them.
 >
-> Work without human authorship may not be copyrightable. Platforms are
+> Work without human authorship may not be copyrightable, and platforms are
 > demonetising synthetic tracks. The buyer finds out after the money is
 > wired.
 
@@ -40,9 +40,11 @@ takes about 48 seconds — that wait is deliberate and you talk over it.
 
 ## 0:20–0:35 · Start the real call — **B**
 
-> So we built the check. This track has never been scored. I'm clicking Run
-> now — a live call to HumanStandard, about forty-five seconds. Let me tell
-> you what it's doing while we wait.
+> So we built the check, on the HumanStandard detection API. They answer
+> whether a human made it. We answer what that's worth.
+>
+> This track has never been scored. I'm clicking Run — a live HumanStandard
+> call, about forty-five seconds. Here's what it's doing.
 
 *Click **Run audit** on Tab 1. Let the event log scroll.*
 
@@ -51,16 +53,16 @@ takes about 48 seconds — that wait is deliberate and you talk over it.
 ## 0:35–1:10 · What it does with the answer — **B**, then **A**
 
 **B:**
-> It uploads, gets a job ID, and polls until the verdict lands. But the
-> verdict isn't the output. HumanStandard publishes three calibrated
-> operating points, each with its false-positive rate attached — roughly
-> zero, one to two percent, and five to ten.
+> It uploads to HumanStandard, gets a job ID back, and polls until the
+> verdict lands. But their verdict isn't our output. HumanStandard publishes
+> three calibrated operating points, each with its false-positive rate
+> attached — roughly zero, one to two percent, and five to ten.
 
 **A:**
-> We tier on those, not on numbers we invented. Suspect when the middle point
-> calls it AI. Clean when even the widest net calls it human. And when they
-> disagree, we don't guess — that's the contested band, and it goes to a
-> person.
+> We tier on HumanStandard's calibration, not on numbers we invented.
+> Suspect when the middle point calls it AI. Clean when even the widest net
+> calls it human. And when their three points disagree, we don't guess —
+> that's the contested band, and it goes to a person.
 
 *The verdict lands. Read out the tier it returned.*
 
@@ -83,15 +85,16 @@ evidence slide.*
 
 *Stay on the evidence slide. Point at row six, then let the JSON show.*
 
-> Look at this one. A real Udio generation. The headline verdict says
-> **human**, at twenty-nine percent confidence — and its similarity map says
-> twenty-four of its twenty-five nearest neighbours are verified human
-> recordings.
+> Look at this one. A real Udio generation. HumanStandard's headline verdict
+> says **human**, at twenty-nine percent confidence — and their similarity
+> map puts twenty-four of its twenty-five nearest neighbours in the verified
+> human population.
 >
-> But the operating points say AI. We tier on those, so we caught it.
+> But their operating points say AI. We tier on those, so we caught it.
 >
-> A tool reading the obvious field would have passed a synthetic track
-> straight into the clean base.
+> Everything needed to catch this was in HumanStandard's response. A tool
+> reading only the obvious field would have passed it straight into the
+> clean base.
 
 ---
 
@@ -103,33 +106,31 @@ evidence slide.*
 > catalog by count — but 17.4% of its revenue.**
 >
 > Synthetic uploads pile up faster than they earn. Count tracks and you
-> overstate the damage by more than double. Only one of those numbers belongs
-> in a negotiation.
+> overstate the damage by double. Only one of those numbers belongs in a
+> negotiation.
 >
 > Against a seven-hundred-and-twenty-thousand-dollar asking price: a
-> recommended escrow of **one hundred seventy-one thousand, seven hundred
-> and ten dollars.**
+> recommended escrow of **one hundred seventy-one thousand dollars.**
 
 ---
 
 ## 2:35–2:50 · What it got right, and what it refused — **A**
 
 > We planted six AI tracks. It caught all six, missed none, wrongly flagged
-> zero humans. Six is a small sample — and the memo says so itself rather
+> zero humans. Six is a small sample — and the memo says so itself, rather
 > than quoting precision as if it were measured.
 >
-> And two it wouldn't call, carrying six thousand dollars between them.
-> They're in the review queue with the reason and the evidence.
+> And two it wouldn't call, carrying six thousand dollars — in the review
+> queue, with the reason and the evidence.
 
 ---
 
 ## 2:50–3:00 · Close — **B**
 
-> Everyone else's detector outputs a score. This outputs a dollar figure, a
-> review queue, and its own error rate.
+> HumanStandard tells you what a recording is. We tell you what it costs —
+> a dollar figure, a review queue, and our own error rate beside it.
 >
-> Zero dependencies, two hundred seventy-one tests, and every verdict you
-> just saw came from a real API call.
+> Zero dependencies, two hundred seventy-one tests, and every verdict real.
 
 ---
 
