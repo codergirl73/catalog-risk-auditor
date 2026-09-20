@@ -1,0 +1,27 @@
+# secrets -- never commit
+.env
+*.key
+
+# cached API responses (may contain full detection payloads)
+.cache/
+
+# audio and generated data
+data/catalog/
+data/*.csv
+!data/.gitkeep
+
+# outputs
+out/
+!out/.gitkeep
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# os
+.DS_Store
+Thumbs.db
