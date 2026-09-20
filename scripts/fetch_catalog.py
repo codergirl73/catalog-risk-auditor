@@ -43,7 +43,8 @@ AUDIO_FORMATS = ("VBR MP3", "128Kbps MP3", "64Kbps MP3", "MP3")
 def _get_json(url: str, timeout: float = 30.0) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with net.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8", errors="replace"))
+        return json.loads(
+            net.read_capped(resp).decode("utf-8", errors="replace"))
 
 
 def search_items(query: str, rows: int) -> list:

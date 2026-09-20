@@ -121,6 +121,14 @@ DEFAULT_MULTIPLE = _f("DEFAULT_MULTIPLE", 15.0)
 # only part of it is held back.
 CONTESTED_ESCROW_WEIGHT = _f("CONTESTED_ESCROW_WEIGHT", 0.5)
 
+# A catalog is a folder somebody else assembled -- that is the premise of
+# the tool. A symlink inside it that resolves outside it is therefore not
+# obviously part of the catalog, and following one uploads a file of the
+# sender's choosing to a third-party API. Off by default; set this only for a
+# catalog you assembled yourself.
+FOLLOW_EXTERNAL_SYMLINKS = os.environ.get(
+    "FOLLOW_EXTERNAL_SYMLINKS", "").strip().lower() in ("1", "true", "yes")
+
 AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a", ".aif", ".aiff", ".ogg"}
 
 OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", str(ROOT / "out")))

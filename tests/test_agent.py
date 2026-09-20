@@ -226,3 +226,67 @@ class TestReviewQueueEconomics(CatalogFixture):
         agent, _ = self.run_audit()
         amounts = [i["annual_usd"] for i in agent.result.review_queue]
         self.assertEqual(amounts, sorted(amounts, reverse=True))
+
+
+class TestCatalogBoundary(unittest.TestCase):
+    """A catalog is assembled by the counterparty.
+
+    A symlink inside it that resolves outside it is the one way a file can
+    look like part of the catalog while being somewhere else on the machine.
+    Following one uploads a file of the seller's choosing to a third-party
+    detection API.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        self.secret = root / "id_rsa"
+        self.secret.write_text("PRIVATE KEY MATERIAL", encoding="utf-8")
+        self.catalog = root / "catalog"
+        self.catalog.mkdir()
+        (self.catalog / "real.mp3").write_bytes(b"genuine audio")
+        (self.catalog / "planted.mp3").symlink_to(self.secret)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def audit(self):
+        agent = AuditAgent(force_mock=True)
+        return agent, list(agent.run(self.catalog))
+
+    def test_an_escaping_symlink_is_not_uploaded(self):
+        agent, _ = self.audit()
+        scored = {a.filename for a in agent.result.assets}
+        self.assertIn("real.mp3", scored)
+        self.assertNotIn("planted.mp3", scored)
+
+    def test_the_refusal_is_announced_not_silent(self):
+        _, events = self.audit()
+        warnings = [e for e in events
+                    if e.type == "warn" and "outside" in e.title]
+        self.assertTrue(warnings, "escaping link was dropped without saying so")
+        self.assertEqual(warnings[0].data["count"], 1)
+        self.assertIn("planted.mp3", warnings[0].detail)
+
+    def test_a_link_inside_the_catalog_is_fine(self):
+        target = self.catalog / "real.mp3"
+        (self.catalog / "alias.mp3").symlink_to(target)
+        agent, _ = self.audit()
+        self.assertIn("alias.mp3",
+                      {a.filename for a in agent.result.assets})
+
+    def test_the_guard_can_be_lifted_deliberately(self):
+        from catalog_audit import config
+        original = config.FOLLOW_EXTERNAL_SYMLINKS
+        try:
+            config.FOLLOW_EXTERNAL_SYMLINKS = True
+            agent, _ = self.audit()
+            self.assertIn("planted.mp3",
+                          {a.filename for a in agent.result.assets})
+        finally:
+            config.FOLLOW_EXTERNAL_SYMLINKS = original
+
+    def test_a_catalog_of_nothing_but_escaping_links_errors(self):
+        (self.catalog / "real.mp3").unlink()
+        _, events = self.audit()
+        self.assertEqual(events[-1].type, "error")

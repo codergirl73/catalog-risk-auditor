@@ -78,8 +78,9 @@ class AuditAgent:
                 "hashes and mean nothing. Do not record a demo in this mode.",
             )
 
-        files = self._find_audio(catalog_dir)
-        yield from self._step_inventory(catalog_dir, files)
+        files, escaping = self._partition(
+            self._find_audio(catalog_dir), catalog_dir)
+        yield from self._step_inventory(catalog_dir, files, escaping)
         if not files:
             return
 
@@ -96,9 +97,24 @@ class AuditAgent:
 
     # -- steps -----------------------------------------------------------
 
-    def _step_inventory(self, catalog_dir: Path, files: list):
+    def _step_inventory(self, catalog_dir: Path, files: list,
+                        escaping: list = ()):
         """Count the catalog, then price the run before committing to it."""
         yield _ev("step", PLAN[0])
+
+        if escaping:
+            yield _ev(
+                "warn", "Links pointing outside the catalog",
+                "%d file%s in this catalog resolve outside it and were not "
+                "uploaded: %s. A catalog is assembled by the seller, so a "
+                "link out of it would send a file of their choosing to the "
+                "detection API. Set FOLLOW_EXTERNAL_SYMLINKS=1 if you "
+                "assembled this catalog yourself."
+                % (len(escaping), "" if len(escaping) == 1 else "s",
+                   ", ".join(p.name for p in escaping[:5])),
+                count=len(escaping),
+            )
+
         if not files:
             yield _ev("error", "Empty catalog",
                       "No audio files found under %s" % catalog_dir)
@@ -290,10 +306,37 @@ class AuditAgent:
     # -- helpers ---------------------------------------------------------
     @staticmethod
     def _find_audio(catalog_dir: Path) -> list:
+        """Audio files inside the catalog, in a stable order."""
         return [
             p for p in sorted(catalog_dir.rglob("*"))
             if p.is_file() and p.suffix.lower() in config.AUDIO_EXTENSIONS
         ]
+
+    @staticmethod
+    def _escapes_catalog(path: Path, catalog_dir: Path) -> bool:
+        """Whether `path` resolves outside the catalog it was found in.
+
+        A symlink is the one way a file can appear to be in the catalog while
+        actually being somewhere else on the machine. Since the catalog is
+        assembled by the counterparty, following one would upload a file of
+        their choosing to a third party.
+        """
+        try:
+            root = catalog_dir.resolve(strict=False)
+            return not path.resolve(strict=False).is_relative_to(root)
+        except (OSError, ValueError):
+            return True
+
+    @classmethod
+    def _partition(cls, files: list, catalog_dir: Path) -> tuple:
+        """Split the inventory into (inside the catalog, escaping it)."""
+        if config.FOLLOW_EXTERNAL_SYMLINKS:
+            return files, []
+        inside, escaping = [], []
+        for path in files:
+            (escaping if cls._escapes_catalog(path, catalog_dir)
+             else inside).append(path)
+        return inside, escaping
 
     @staticmethod
     def _manifest(assets: list) -> str:

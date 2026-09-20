@@ -52,6 +52,11 @@ USER_AGENT = ("catalog-risk-auditor/0.1 "
 # Directory blocks are the hot ones; member blocks stream past once.
 MAX_CACHED_BLOCKS = 64
 
+# A ZIP header states the uncompressed size of each member. Checking it
+# before inflating is what stops a small archive from becoming a large
+# allocation; a song is single-digit megabytes and nothing here needs more.
+MAX_MEMBER_BYTES = 64 * 1024 * 1024
+
 AUDIO_EXT = {".mp3", ".wav", ".flac", ".m4a", ".ogg"}
 
 
@@ -210,8 +215,20 @@ def main(argv=None) -> int:
             written.append((safe, name))
             continue
         try:
+            declared = zf.getinfo(name).file_size
+            if declared > MAX_MEMBER_BYTES:
+                print("  [%2d/%d] skipped %s: declares %.0f MB"
+                      % (i, len(chosen), name[:40], declared / 1e6))
+                continue
             with zf.open(name) as src:
-                data = src.read()
+                # Read one byte past the declared size: a member that inflates
+                # past what its own header claimed is malformed or hostile,
+                # and either way is not a song.
+                data = src.read(MAX_MEMBER_BYTES + 1)
+            if len(data) > MAX_MEMBER_BYTES:
+                print("  [%2d/%d] skipped %s: inflated past its declared size"
+                      % (i, len(chosen), name[:40]))
+                continue
         except Exception as exc:
             print("  [%2d/%d] failed %s: %s" % (i, len(chosen), name[:40], exc))
             continue

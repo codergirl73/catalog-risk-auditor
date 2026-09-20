@@ -26,6 +26,16 @@ ALLOWED_SCHEMES = frozenset({"https"})
 
 DEFAULT_TIMEOUT_S = 60.0
 
+# Nothing this project fetches as text is large: a detection verdict is a few
+# kilobytes and an archive index is a few megabytes. Reading a response whole
+# without a bound means the far end decides how much memory we allocate, and
+# a Content-Length header is a claim rather than a constraint.
+MAX_RESPONSE_BYTES = 32 * 1024 * 1024
+
+
+class ResponseTooLargeError(ValueError):
+    """Raised when a response exceeds MAX_RESPONSE_BYTES."""
+
 
 class UnsafeURLError(ValueError):
     """Raised when a URL's scheme is not one we are willing to open."""
@@ -48,6 +58,37 @@ def check_url(url: str) -> str:
     if not parsed.netloc:
         raise UnsafeURLError("Refusing to open %r: no host." % str(url)[:120])
     return url
+
+
+def is_safe_link(url: str) -> bool:
+    """Whether a URL is safe to put in an href we render for someone else.
+
+    Escaping stops an attacker closing the attribute. It does nothing about
+    the scheme, so `javascript:alert(1)` survives html.escape intact and
+    becomes a live link in a document somebody opens in a browser. The memo
+    embeds URLs that arrive in API responses, so the scheme is checked before
+    the link is written, not after.
+    """
+    try:
+        check_url(url)
+    except (UnsafeURLError, ValueError, AttributeError):
+        return False
+    return True
+
+
+def read_capped(response, limit: int = MAX_RESPONSE_BYTES) -> bytes:
+    """Read a response body, refusing to allocate more than `limit`.
+
+    Reads one byte past the limit so an oversized body is detected rather
+    than silently truncated, which would be worse: a JSON parse failure on a
+    truncated payload looks like a schema problem and sends whoever is
+    debugging in exactly the wrong direction.
+    """
+    data = response.read(limit + 1)
+    if len(data) > limit:
+        raise ResponseTooLargeError(
+            "Response exceeded %d bytes and was not read." % limit)
+    return data
 
 
 def urlopen(request, timeout: float = DEFAULT_TIMEOUT_S):

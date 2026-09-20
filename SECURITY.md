@@ -80,6 +80,68 @@ being trusted to stop:
 - Retries are bounded, and 400/401/403/415 are not retried — a request the
   server has already rejected on its merits will be rejected again.
 
+## The memo is a document someone else opens
+
+The memo embeds values that arrived from a detection API — a generator name, a
+plain-language basis, an evidence URL — and is then opened in a browser by the
+person least equipped to notice if one of them is hostile.
+
+- **Every interpolated value is HTML-escaped**, with tests that feed it
+  hostile filenames and reasons.
+- **Evidence URLs are checked for scheme before they become links.** Escaping
+  prevents an attacker closing the attribute; it does nothing about the
+  scheme, so `javascript:alert(1)` survives `html.escape` completely intact
+  and becomes a live link. Only `https:` is linked; anything else is dropped
+  and the row still renders. This was a real defect, found by writing the
+  attack rather than by any scanner — bandit, ruff and CodeQL all pass over it
+  because the sink is a hand-built string.
+- **A Content Security Policy** forbids the lot regardless:
+  `default-src 'none'`, no scripts at all, styles inline only,
+  `form-action 'none'`, `base-uri 'none'`.
+- External links carry `rel="noopener noreferrer nofollow"` and the document
+  sets `referrer: no-referrer`, so opening one leaks nothing about where the
+  memo lives on disk.
+- The memo loads nothing over the network. Tested.
+
+## The catalog is assembled by the counterparty
+
+That is the premise of the tool: somebody sends you a folder and you audit it
+before wiring money. So the folder is untrusted input.
+
+A symlink is the one way a file can appear to be in the catalog while actually
+being elsewhere on the machine. `track02.mp3` pointing at `~/.ssh/id_rsa`
+would be uploaded to a third-party API for analysis. Files that resolve
+outside the catalog directory are therefore **not scored**, and the refusal is
+announced with the filenames rather than dropped silently.
+`FOLLOW_EXTERNAL_SYMLINKS=1` lifts it for a catalog you assembled yourself.
+
+## Nothing reads an unbounded response
+
+A `Content-Length` header is a claim, not a constraint, and reading a body
+whole lets the far end decide how much memory this process allocates.
+
+- API and metadata responses are read through a capped reader
+  (`net.read_capped`) that **refuses** rather than truncating — a truncated
+  payload fails as a JSON parse error and sends whoever is debugging after a
+  schema problem that does not exist.
+- ZIP members are checked against the size their own header declares before
+  being inflated, and the read is bounded one byte past it, so a small archive
+  cannot become a large allocation.
+- Uploads are refused above `HS_MAX_UPLOAD_MB`.
+- Downloads stream in fixed chunks rather than accumulating.
+
+## Known trust boundaries, stated plainly
+
+These are accepted rather than solved, and worth knowing:
+
+| Boundary | Position |
+|---|---|
+| `.cache/*.json` | Trusted. Anyone who can write there controls the verdicts. It holds API responses keyed by file hash; treat it as you would any local state directory. |
+| `HS_API_BASE` | Trusted — it comes from your own `.env`. The scheme is pinned to https, but pointing it at an internal address is not prevented, because that is a configuration decision, not an attack. |
+| `out/audit.json` | Contains full raw API responses, including evidence URLs. Gitignored. Review before sharing. |
+| Royalty and label CSVs | Trusted; they are the buyer's own diligence files. |
+| Uploaded audio | Leaves the machine. That is the function of the tool, and the only thing that does. |
+
 ## Failure handling
 
 The governing rule is that an unverified asset is never reported as clean.

@@ -11,7 +11,7 @@ import html
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import config
+from . import config, net
 from .evaluation import summary as eval_summary
 from .models import AuditResult, Tier
 from .valuation import headline
@@ -318,6 +318,15 @@ _NOT_A_GENERATOR = frozenset({"human", "uncertain", "unknown", "none"})
 _PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- The memo embeds values that arrived from a detection API and is opened in
+     a browser by whoever is least equipped to notice if one of them is
+     hostile. Nothing here needs to execute, load, or phone home, so nothing
+     is permitted to: no scripts at all, styles inline only, images and
+     frames blocked, and no form may submit anywhere. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; img-src data:;
+               form-action 'none'; base-uri 'none'; frame-ancestors 'none'">
+<meta name="referrer" content="no-referrer">
 <title>Acquisition risk memo &mdash; %(name)s</title>
 <style>%(css)s</style></head>
 <body><div class="sheet">
@@ -443,15 +452,20 @@ def _review_section(result: AuditResult) -> str:
         a.filename: a.score.origin_map_evidence
         for a in result.assets
         if a.score and a.score.ok and a.score.origin_map_evidence
+        and net.is_safe_link(a.score.origin_map_evidence)
     }
 
     rows = []
     for item in result.review_queue[:MAX_REVIEW_ROWS]:
         reason = e(item["reason"])
+        # Only link out to something we are willing to open. A verdict is
+        # data from a third party, and a `javascript:` URL survives escaping
+        # perfectly well -- the memo is opened in a browser by the person
+        # least equipped to notice.
         link = evidence.get(item["filename"], "")
-        if link:
-            reason += (' <a class="ev" href="%s">similarity map</a>'
-                       % e(link, quote=True))
+        if link and net.is_safe_link(link):
+            reason += (' <a class="ev" rel="noopener noreferrer nofollow"'
+                       ' href="%s">similarity map</a>' % e(link, quote=True))
         score = ("%.0f" % item["ai_score"] if item["ai_score"] >= 0
                  else "&mdash;")
         rows.append(

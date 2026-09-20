@@ -76,6 +76,10 @@ _MIDPOINT = 50.0
 _ASSUMED_CONFIDENCE = 0.8
 
 # Rate limiting is reported by status code, not by exception type.
+# How much of an error body to quote back. Enough to diagnose, bounded so
+# a failing server cannot dictate the size of our log line.
+ERROR_DETAIL_BYTES = 400
+
 HTTP_TOO_MANY_REQUESTS = 429
 MAX_RETRY_AFTER_S = 30.0
 FALLBACK_RETRY_AFTER_S = 5.0
@@ -584,9 +588,10 @@ class LiveDetector:
         self._throttle()
         try:
             with net.urlopen(req, timeout=config.HS_TIMEOUT_S) as resp:
-                raw = resp.read().decode("utf-8", errors="replace")
+                raw = net.read_capped(resp).decode("utf-8", errors="replace")
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")[:400]
+            detail = exc.read(ERROR_DETAIL_BYTES).decode(
+                "utf-8", errors="replace")[:ERROR_DETAIL_BYTES]
             if exc.code == HTTP_TOO_MANY_REQUESTS:
                 # Respect Retry-After when they send one, then let the caller
                 # retry rather than sleeping inside a request.

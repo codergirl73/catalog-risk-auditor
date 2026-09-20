@@ -79,3 +79,58 @@ class TestNoDirectSocketCalls(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestBoundedReads(unittest.TestCase):
+    """A Content-Length header is a claim, not a constraint.
+
+    Reading a response whole without a bound lets the far end decide how much
+    memory this process allocates.
+    """
+
+    class FakeResponse:
+        def __init__(self, size):
+            self.size = size
+
+        def read(self, n=None):
+            return b"x" * (self.size if n is None else min(self.size, n))
+
+    def test_a_small_response_reads_normally(self):
+        from catalog_audit import net
+        self.assertEqual(len(net.read_capped(self.FakeResponse(1024))), 1024)
+
+    def test_an_oversized_response_is_refused_not_truncated(self):
+        # Truncating would surface later as a JSON parse error and send
+        # whoever is debugging after a schema problem that does not exist.
+        from catalog_audit import net
+        with self.assertRaises(net.ResponseTooLargeError):
+            net.read_capped(self.FakeResponse(1024), limit=512)
+
+    def test_a_response_exactly_at_the_limit_is_allowed(self):
+        from catalog_audit import net
+        self.assertEqual(len(net.read_capped(self.FakeResponse(512), limit=512)),
+                         512)
+
+    def test_the_default_limit_is_finite_and_sane(self):
+        from catalog_audit import net
+        self.assertGreater(net.MAX_RESPONSE_BYTES, 1 << 20)
+        self.assertLess(net.MAX_RESPONSE_BYTES, 1 << 30)
+
+
+class TestLinkSafety(unittest.TestCase):
+    def test_https_links_are_safe(self):
+        from catalog_audit import net
+        self.assertTrue(net.is_safe_link("https://example.com/a.png"))
+
+    def test_script_schemes_are_not(self):
+        from catalog_audit import net
+        for url in ("javascript:alert(1)", "data:text/html,x",
+                    "vbscript:x", "file:///etc/passwd", "//evil.com/x"):
+            with self.subTest(url=url):
+                self.assertFalse(net.is_safe_link(url))
+
+    def test_junk_input_is_not_safe_and_does_not_raise(self):
+        from catalog_audit import net
+        for value in ("", None, 12345, "   "):
+            with self.subTest(value=value):
+                self.assertFalse(net.is_safe_link(value))
