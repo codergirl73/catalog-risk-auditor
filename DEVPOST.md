@@ -1,3 +1,5 @@
+**[▶ Watch a real audit run](https://codergirl73.github.io/catalog-risk-auditor/)** · **[read the memo it produced](https://codergirl73.github.io/catalog-risk-auditor/memo.html)**
+
 ## Inspiration
 
 Music catalogs are bought and sold as income streams. A buyer pays a multiple

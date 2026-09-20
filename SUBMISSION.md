@@ -4,6 +4,8 @@ Three tracks, one project, one repository:
 **HumanStandard** · **The Code Registry** · **Open Track / Bring Your Own Project**
 
 Repository: https://github.com/codergirl73/catalog-risk-auditor
+**Live demo: https://codergirl73.github.io/catalog-risk-auditor/** — a recording of a real run, replayed in the browser
+**The memo: https://codergirl73.github.io/catalog-risk-auditor/memo.html**
 
 Placeholders marked `[ ]` are filled from the real run. Do not fill them from a
 mock run — `memo.py` refuses to render one, and that refusal is the point.
@@ -27,6 +29,7 @@ and returns the number the buyer negotiates with: a recommended escrow.
 ### Requirements checklist
 
 - [x] Public code repository — https://github.com/codergirl73/catalog-risk-auditor
+- [x] Live demo anyone can open — https://codergirl73.github.io/catalog-risk-auditor/
 - [ ] Demo video, 3 minutes or less
 - [x] Written problem description and target music industry user — below
 - [x] Explanation of API integration and how verdicts are used — below

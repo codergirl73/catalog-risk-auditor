@@ -8,6 +8,11 @@
 
 **Audit a music catalog for AI-generated content before you buy it.**
 
+### ▶ [Watch a real audit run](https://codergirl73.github.io/catalog-risk-auditor/) &nbsp;·&nbsp; [read the memo it produced](https://codergirl73.github.io/catalog-risk-auditor/memo.html)
+
+A recording of an actual run against the live HumanStandard API — the agent's
+plan, the events it emitted, and the numbers it computed. Nothing staged.
+
 Music catalogs are bought and sold as income streams, priced at a multiple of
 annual royalties. A buyer verifies who owns the songs and what they earn. Until
 now nobody verified whether a person made them.
