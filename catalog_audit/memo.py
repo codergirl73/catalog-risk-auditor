@@ -562,6 +562,11 @@ def render(result: AuditResult, allow_mock: bool = False) -> str:
 
 
 def write(result: AuditResult, allow_mock: bool = False) -> Path:
+    """Render the memo to OUTPUT_DIR and return where it landed.
+
+    Raises MockModeRefusedError for a fabricated run unless explicitly
+    overridden, so a meaningless number cannot reach a buyer by accident.
+    """
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     path = config.OUTPUT_DIR / "risk_memo.html"
     path.write_text(render(result, allow_mock=allow_mock), encoding="utf-8")

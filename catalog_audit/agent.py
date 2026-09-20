@@ -34,6 +34,13 @@ def _ev(type_, title="", detail="", **data) -> Event:
 
 
 class AuditAgent:
+    """Runs one catalog audit, emitting Events as it goes.
+
+    Holds the call budget and the detector, and carries the products of
+    each step between them. Stateful by design: the steps are a pipeline
+    and each one needs what the last produced.
+    """
+
     def __init__(self, force_mock: bool = False,
                  budget_limit: int | None = None) -> None:
         limit = config.HS_CREDIT_BUDGET if budget_limit is None else budget_limit

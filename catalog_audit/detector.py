@@ -337,10 +337,17 @@ class LiveDetector:
         self.budget = budget
 
     def detect(self, path, digest: str = "") -> TrackScore:
+        """Score one file, from cache where possible.
+
+        Never raises for a detection failure. An unscorable asset comes back
+        as a TrackScore carrying the reason, so the caller tiers it as an
+        error rather than losing a whole catalog to one bad file.
+        """
         p = Path(path)
         digest = digest or sha256_file(p)
 
         def failed(msg: str) -> TrackScore:
+            """A score that carries why there is no score."""
             return TrackScore(
                 filename=p.name, path=str(p), ai_score=-1.0, confidence=0.0,
                 provider=self.name, sha256=digest, error=msg,
@@ -408,6 +415,7 @@ class LiveDetector:
         return config.CACHE_DIR / (digest + ".json")
 
     def is_cached(self, digest: str) -> bool:
+        """Whether this file has already been scored, and paid for."""
         return self._cache_file(digest).exists()
 
     def _read_cache(self, digest: str):
@@ -623,9 +631,11 @@ class MockDetector:
         self.budget = budget
 
     def is_cached(self, digest: str) -> bool:
+        """Nothing is cached: the mock never spends a real call."""
         return False
 
     def detect(self, path, digest: str = "") -> TrackScore:
+        """Return a stable, fabricated score derived from the file hash."""
         p = Path(path)
         digest = digest or sha256_file(p)
 

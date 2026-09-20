@@ -24,6 +24,7 @@ def _supports_colour() -> bool:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Command-line surface. Every flag maps to one audit decision."""
     p = argparse.ArgumentParser(
         prog="catalog-audit",
         description="Audit a music catalog for AI-generated content before "
@@ -125,6 +126,11 @@ def _write_outputs(result, out: _Printer, allow_mock: bool,
 
 
 def main(argv=None) -> int:
+    """Run an audit and write its outputs.
+
+    Returns 0 on success, 1 if the audit could not complete, and 2 if the
+    catalog path is not a folder.
+    """
     args = build_parser().parse_args(argv)
     out = _Printer(_supports_colour())
 

@@ -127,6 +127,11 @@ OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", str(ROOT / "out")))
 
 
 def thresholds_summary() -> str:
+    """The tiering rule, in one line, printed on every run.
+
+    A stated threshold can be argued with. A hidden one can only be
+    trusted, which is a worse position for a buyer to be in.
+    """
     return (
         "suspect when HumanStandard's human-safe tier (~1-2% FPR) says ai | "
         "clean when its recall tier (~5-10% FPR) says human | "
@@ -134,15 +139,8 @@ def thresholds_summary() -> str:
     )
 
 
-def fallback_thresholds_summary() -> str:
-    return (
-        f"fallback scoring: clean < {CLEAN_CEILING:.0f} | contested "
-        f"{CLEAN_CEILING:.0f}-{SUSPECT_FLOOR:.0f} | suspect > "
-        f"{SUSPECT_FLOOR:.0f} | min confidence {MIN_CONFIDENCE:.2f}"
-    )
-
-
 def budget_summary(needed: int) -> str:
+    """What this run will cost, before it is spent."""
     return (
         f"{needed} live call{'' if needed == 1 else 's'} needed, "
         f"{HS_CREDIT_BUDGET} credit budget"

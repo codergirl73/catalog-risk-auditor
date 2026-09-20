@@ -187,16 +187,19 @@ class Evaluation:
 
     @property
     def origin_accuracy(self):
+        """Share of caught AI assets traced to the right generator."""
         return (self.origin_correct / self.origin_labelled
                 if self.origin_labelled else None)
 
     @property
     def precision(self) -> float | None:
+        """Of the assets called AI, how many were. None if none were called."""
         d = self.true_positive + self.false_positive
         return self.true_positive / d if d else None
 
     @property
     def recall(self) -> float | None:
+        """Of the AI assets present, how many were caught."""
         d = self.true_positive + self.false_negative
         return self.true_positive / d if d else None
 
@@ -218,6 +221,8 @@ class AuditResult:
     generated_at: float = field(default_factory=time.time)
 
     def to_dict(self) -> dict:
+        """JSON-safe form, with enums flattened to their values."""
+        """JSON-safe form, with enums flattened to their values."""
         out: dict[str, Any] = asdict(self)
         for a in out.get("assets", []):
             t = a.get("tier")

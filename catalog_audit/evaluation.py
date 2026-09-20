@@ -68,6 +68,7 @@ def load_origins(csv_path) -> dict:
 
 def attach(assets: list, truth: dict,
            origins: dict | None = None) -> int:
+    """Join the answer key onto the assets. Returns how many matched."""
     matched = 0
     origins = origins or {}
     for asset in assets:

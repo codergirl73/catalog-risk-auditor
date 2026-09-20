@@ -252,6 +252,8 @@ def apply(assets: list) -> list:
 
 
 def counts(assets: list) -> dict:
+    """How many assets landed in each tier."""
+    """How many assets landed in each tier."""
     out = dict.fromkeys(Tier, 0)
     for a in assets:
         out[a.tier] = out.get(a.tier, 0) + 1
