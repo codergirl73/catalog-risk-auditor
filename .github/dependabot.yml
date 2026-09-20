@@ -1,0 +1,18 @@
+# The runtime dependency tree is empty, but CI is not: every `uses:` in a
+# workflow is third-party code running with access to the repository. Those
+# are pinned to commit SHAs, which is immutable but also invisible to a human
+# reading the diff — so Dependabot watches them and opens a PR when one moves,
+# keeping the comment beside each pin honest.
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies

@@ -1,0 +1,48 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-09-20T17:49:52Z",
+    "component": {
+      "type": "application",
+      "bom-ref": "catalog-risk-auditor",
+      "name": "catalog-risk-auditor",
+      "version": "0.1.0",
+      "description": "Audits a music catalog for AI-generated recordings before acquisition and reports the exposure as a recommended escrow.",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "purl": "pkg:generic/catalog-risk-auditor@0.1.0"
+    },
+    "properties": [
+      {
+        "name": "commit",
+        "value": "56e4212f96584122a8d1740c8ce74fcd30b8937c"
+      },
+      {
+        "name": "runtime",
+        "value": "Python >=3.10"
+      },
+      {
+        "name": "runtime:dependencies",
+        "value": "0"
+      },
+      {
+        "name": "note",
+        "value": "The runtime dependency tree is empty: this software imports only the Python standard library. CI asserts the absence of requirements.txt, pyproject.toml, setup.py, Pipfile and poetry.lock on every push, and imports the package without running pip install."
+      }
+    ]
+  },
+  "components": [],
+  "dependencies": [
+    {
+      "ref": "catalog-risk-auditor",
+      "dependsOn": []
+    }
+  ]
+}

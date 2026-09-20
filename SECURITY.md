@@ -2,14 +2,29 @@
 
 ## Dependency surface
 
-There isn't one. The project imports only the Python standard library —
-`urllib.request`, `csv`, `hashlib`, `json`, `wave`, `dataclasses`. There is no
-`requirements.txt`, no `pyproject.toml`, no lockfile and no virtualenv step,
-because there is nothing to install. CI asserts this on every push rather than
-leaving it as a claim in a README.
+**At runtime, there isn't one.** The project imports only the Python standard
+library — 26 modules, all of them stdlib. There is no `requirements.txt`, no
+`pyproject.toml`, no lockfile and no virtualenv step, because there is nothing
+to install. CI asserts this on every push, and `sbom.json` (CycloneDX 1.5)
+records it as a signed-off artefact with zero components.
 
-An empty dependency tree cannot carry a transitive vulnerability, and there is
-no install-time code execution to audit.
+An empty runtime tree cannot carry a transitive vulnerability, and there is no
+install-time code execution to audit.
+
+### CI is not exempt
+
+A workflow's `uses:` entries are third-party code running with access to the
+repository, so they are dependencies whether or not they appear in a manifest.
+
+- Every action is **pinned to a full commit SHA**, not a tag. A tag is mutable:
+  whoever controls it can repoint `@v4` at different code, and nothing in the
+  repository would change.
+- The human-readable version sits in a comment beside each pin, and
+  **Dependabot** watches them weekly so those comments stay honest and the
+  pins stay current.
+- Analysis tooling (`ruff`, `bandit`, `radon`, `coverage`) installs in the CI
+  job only. None of it is importable by the shipped package, and the test job
+  proves that separately on four Python versions.
 
 ## Secrets
 
@@ -101,13 +116,16 @@ rather than living in a document:
 | Cyclomatic complexity | `radon` | Any function scoring D or worse fails |
 | Independent recurring scan | **CodeQL** | `security-and-quality` suite, every push and weekly |
 | Secrets | CI shell | No `.env` or `*.key` tracked; the committed evidence file must stay credential-free |
-| Behaviour | `unittest` | 158 tests, Python 3.10 / 3.11 / 3.12 / 3.13 |
+| Behaviour | `unittest` | 187 tests, Python 3.10 / 3.11 / 3.12 / 3.13 |
+| Test coverage | `coverage` | Fails below 85%; currently **90%** |
+| SBOM accuracy | CI shell | `sbom.json` must still declare zero runtime components |
+| CI supply chain | Dependabot | Actions pinned to SHAs, reviewed weekly |
 
 Analysis tooling is installed in CI only. Nothing it checks is imported at
 runtime, and the test job proves that separately on all four versions.
 
-Current state: **zero lint findings, zero bandit findings, no function above
-C complexity, average A.**
+Current state: **zero lint findings, zero bandit findings, 90% test coverage,
+no function above C complexity, average A.**
 
 ## Reporting
 

@@ -18,9 +18,9 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -54,16 +54,16 @@ jobs:
     name: lint, security and complexity
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
 
       - name: Install analysis tools
         # Development tooling only. None of this is imported at runtime, and
         # the job above proves the runtime tree is still empty.
-        run: pip install --disable-pip-version-check ruff bandit radon
+        run: pip install --disable-pip-version-check ruff bandit radon coverage
 
       - name: Lint
         run: ruff check catalog_audit scripts tests
@@ -81,3 +81,18 @@ jobs:
 
       - name: Report maintainability
         run: radon mi catalog_audit scripts -s
+
+      - name: Test coverage
+        run: |
+          coverage run --source=catalog_audit -m unittest discover -s tests
+          coverage report --show-missing --fail-under=85
+
+      - name: Confirm the SBOM still claims an empty runtime tree
+        run: |
+          python - <<'PY'
+          import json, pathlib
+          bom = json.loads(pathlib.Path("sbom.json").read_text())
+          assert bom["components"] == [], "sbom.json lists runtime components"
+          assert bom["dependencies"][0]["dependsOn"] == [], "sbom.json lists deps"
+          print("SBOM: 0 runtime components, as claimed")
+          PY

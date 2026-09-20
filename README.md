@@ -163,7 +163,7 @@ overridden, and marks the document if it does.
 
 ## Tests
 
-158 tests, no framework to install:
+187 tests, no framework to install:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -175,8 +175,10 @@ complexity (`radon` — any function scoring D or worse fails the build).
 CodeQL's `security-and-quality` suite runs on every push and weekly. The
 dependency tree is asserted empty on every push.
 
-Current: zero lint findings, zero security findings, no function above C
-complexity. See [SECURITY.md](SECURITY.md).
+Current: zero lint findings, zero security findings, **90% coverage**, no
+function above C complexity. GitHub Actions are pinned to commit SHAs and
+watched by Dependabot; `sbom.json` records the empty runtime tree. See
+[SECURITY.md](SECURITY.md).
 
 ## Disclosure
 
