@@ -9,6 +9,7 @@ work rather than a spinner.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from pathlib import Path
 
 from . import config, evaluation, tiering, valuation
@@ -100,7 +101,7 @@ class AuditAgent:
     # -- steps -----------------------------------------------------------
 
     def _step_inventory(self, catalog_dir: Path, files: list,
-                        escaping: list = ()):
+                        escaping: Sequence = ()):
         """Count the catalog, then price the run before committing to it."""
         yield _ev("step", PLAN[0])
 
@@ -162,6 +163,18 @@ class AuditAgent:
                    needed - self.budget.limit),
             )
 
+    @property
+    def _current(self) -> AuditResult:
+        """The result being assembled.
+
+        Optional on the class because it does not exist until a run starts,
+        but every step runs inside one. This states that once rather than
+        making each step defend against a None it cannot receive.
+        """
+        if self.result is None:
+            raise RuntimeError("no audit in progress")
+        return self.result
+
     def _step_score(self, files: list):
         """Score every asset, reporting progress and what it cost."""
         yield _ev("step", PLAN[1],
@@ -182,7 +195,7 @@ class AuditAgent:
                 )
 
         self._assets = assets
-        self.result.assets = assets
+        self._current.assets = assets
 
         yield from self._warn_mock_responses(assets)
         yield from self._report_budget(assets, failed_n)
@@ -197,7 +210,7 @@ class AuditAgent:
         mocked = [a for a in assets if a.score and a.score.mock]
         if not mocked:
             return
-        self.result.mock_mode = True
+        self._current.mock_mode = True
         scenarios = sorted({a.score.mock_scenario for a in mocked
                             if a.score.mock_scenario})
         yield _ev(
@@ -337,7 +350,8 @@ class AuditAgent:
         """Split the inventory into (inside the catalog, escaping it)."""
         if config.FOLLOW_EXTERNAL_SYMLINKS:
             return files, []
-        inside, escaping = [], []
+        inside: list = []
+        escaping: list = []
         for path in files:
             (escaping if cls._escapes_catalog(path, catalog_dir)
              else inside).append(path)

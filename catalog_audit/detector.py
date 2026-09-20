@@ -600,11 +600,12 @@ class LiveDetector:
             if exc.code == HTTP_TOO_MANY_REQUESTS:
                 # Respect Retry-After when they send one, then let the caller
                 # retry rather than sleeping inside a request.
-                wait = exc.headers.get("Retry-After") if exc.headers else None
+                wait = exc.headers.get("Retry-After", "") if exc.headers else ""
                 try:
-                    time.sleep(min(MAX_RETRY_AFTER_S, float(wait)))
-                except (TypeError, ValueError):
-                    time.sleep(FALLBACK_RETRY_AFTER_S)
+                    pause = min(MAX_RETRY_AFTER_S, float(wait))
+                except ValueError:
+                    pause = FALLBACK_RETRY_AFTER_S
+                time.sleep(pause)
             raise RuntimeError(config.redact(
                 "HumanStandard API %s: %s" % (exc.code, detail))) from exc
         except Exception as exc:

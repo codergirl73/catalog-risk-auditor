@@ -214,9 +214,10 @@ rather than living in a document:
 | Lint, 16 rule families incl. security | `ruff` | Any finding fails |
 | Static security analysis | `bandit` | Any finding fails |
 | Cyclomatic complexity | `radon` | Any function scoring D or worse fails |
+| Static types | `mypy` | Any error fails |
 | Independent recurring scan | **CodeQL** | `security-and-quality` suite, every push and weekly |
 | Secrets | CI shell | No `.env` or `*.key` tracked; the committed evidence file must stay credential-free |
-| Behaviour | `unittest` | 187 tests, Python 3.10 / 3.11 / 3.12 / 3.13 |
+| Behaviour | `unittest` | 280 tests, Python 3.10 / 3.11 / 3.12 / 3.13 |
 | Test coverage | `coverage` | Fails below 85%; currently **90%** |
 | SBOM accuracy | CI shell | `sbom.json` must still declare zero runtime components |
 | CI supply chain | Dependabot | Actions pinned to SHAs, reviewed weekly |

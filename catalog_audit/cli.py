@@ -121,7 +121,7 @@ def _write_outputs(result, out: _Printer, allow_mock: bool,
     try:
         path = memo.write(result, allow_mock=allow_mock)
         print(out.paint(DIM, "\n  memo: %s" % path))
-    except memo.MockModeRefusedError as exc:
+    except (memo.MockModeRefusedError, memo.IncompleteAuditError) as exc:
         print(out.paint(YELLOW, "\n  memo not written: %s" % exc))
 
     if json_out:

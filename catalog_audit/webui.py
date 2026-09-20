@@ -26,6 +26,7 @@ Deliberately local:
 from __future__ import annotations
 
 import contextlib
+import html
 import json
 import threading
 from dataclasses import asdict
@@ -114,10 +115,12 @@ class Handler(BaseHTTPRequestHandler):
                        "text/html; charset=utf-8", 404)
             return
         try:
-            body = memo.render(result, allow_mock=self.server.options["allow_mock"])
-        except memo.MockModeRefusedError as exc:
+            body = memo.render(result,
+                               allow_mock=self.server.options["allow_mock"])
+        except (memo.MockModeRefusedError, memo.IncompleteAuditError) as exc:
             body = ("<p style='font:15px system-ui;padding:40px'>"
-                    "<strong>Memo withheld.</strong><br>%s</p>" % exc)
+                    "<strong>Memo withheld.</strong><br>%s</p>"
+                    % html.escape(str(exc)))
         self._send(body.encode("utf-8"), "text/html; charset=utf-8")
 
     def stream(self):

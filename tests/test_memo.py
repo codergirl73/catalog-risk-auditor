@@ -116,3 +116,38 @@ class TestEscaping(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestIncompleteAudit(unittest.TestCase):
+    """A run that stopped early has no numbers to report.
+
+    Reaching into it for an escrow figure produced a bare AttributeError, and
+    through the web UI a 500 with a stack trace. The audit not finishing is a
+    thing worth saying plainly.
+    """
+
+    def test_a_result_with_no_valuation_is_refused_clearly(self):
+        bare = AuditResult("Empty", "/nowhere", provider="humanstandard")
+        with self.assertRaises(memo.IncompleteAuditError) as ctx:
+            memo.render(bare)
+        self.assertIn("nothing to report", str(ctx.exception))
+
+    def test_it_is_not_an_attribute_error(self):
+        bare = AuditResult("Empty", "/nowhere", provider="humanstandard")
+        try:
+            memo.render(bare)
+        except memo.IncompleteAuditError:
+            pass
+        except AttributeError:
+            self.fail("still crashing on a missing valuation")
+
+    def test_the_refusal_survives_allow_mock(self):
+        # --allow-mock overrides the fabricated-numbers gate. It must not
+        # override the no-numbers-at-all gate.
+        bare = AuditResult("Empty", "/nowhere", provider="humanstandard",
+                           mock_mode=True)
+        with self.assertRaises(memo.IncompleteAuditError):
+            memo.render(bare, allow_mock=True)
+
+    def test_a_complete_run_still_renders(self):
+        self.assertIn("Acquisition risk memo", memo.render(result()))

@@ -63,10 +63,13 @@ jobs:
       - name: Install analysis tools
         # Development tooling only. None of this is imported at runtime, and
         # the job above proves the runtime tree is still empty.
-        run: pip install --disable-pip-version-check ruff bandit radon coverage
+        run: pip install --disable-pip-version-check ruff bandit radon coverage mypy
 
       - name: Lint
         run: ruff check catalog_audit scripts tests
+
+      - name: Type check
+        run: mypy catalog_audit --ignore-missing-imports
 
       - name: Security scan
         # Any finding at all fails the build. The one reviewed false positive

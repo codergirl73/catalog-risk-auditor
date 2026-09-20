@@ -13,12 +13,22 @@ from pathlib import Path
 
 from . import config, net
 from .evaluation import summary as eval_summary
-from .models import AuditResult, Tier
+from .models import AuditResult, Tier, Valuation
 from .valuation import headline
 
 
 class MockModeRefusedError(Exception):
     """Raised rather than quietly producing a memo full of fake numbers."""
+
+
+class IncompleteAuditError(Exception):
+    """Raised when asked to render a run that never reached a valuation.
+
+    An audit that stopped early -- an empty catalog, an unreadable folder --
+    leaves a result with no numbers on it. Reaching into that for an escrow
+    figure produced a bare AttributeError and, through the web UI, a 500 with
+    a stack trace. The audit not finishing is a thing worth saying plainly.
+    """
 
 
 _CSS = """
@@ -219,7 +229,7 @@ def _origin_section(assets) -> str:
     A buyer can act on "twelve tracks attributed to Suno" in a way they cannot
     act on "twelve tracks scored above 65". It names the thing.
     """
-    tally = {}
+    tally: dict = {}
     for a in assets:
         sc = a.score
         if not sc or not sc.ok or not sc.origin:
@@ -527,6 +537,12 @@ def render(result: AuditResult, allow_mock: bool = False) -> str:
     meaningless number cannot end up in front of a buyer or a judge by
     accident.
     """
+    if result.valuation is None:
+        raise IncompleteAuditError(
+            "This run produced no valuation, so there is nothing to report. "
+            "The audit stopped before it priced anything \u2014 usually an "
+            "empty catalog or a folder that could not be read.")
+
     if result.mock_mode and not allow_mock:
         raise MockModeRefusedError(
             "This run used the mock detector, so every score is fabricated. "
@@ -535,7 +551,7 @@ def render(result: AuditResult, allow_mock: bool = False) -> str:
         )
 
     e = html.escape
-    val = result.valuation
+    val: Valuation = result.valuation
     asset_rows, asset_note = _asset_rows(result)
     generated = datetime.fromtimestamp(
         result.generated_at, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
