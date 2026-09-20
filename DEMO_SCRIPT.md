@@ -33,6 +33,9 @@ takes about 48 seconds — that wait is deliberate and you talk over it.
 > Work without human authorship may not be copyrightable, and platforms are
 > demonetising synthetic tracks. The buyer finds out after the money is
 > wired.
+>
+> This finds out first — and turns it into an escrow figure. The part of the
+> price you hold back until the questionable tracks are settled.
 
 *Screen: Tab 1, idle.*
 
@@ -40,8 +43,8 @@ takes about 48 seconds — that wait is deliberate and you talk over it.
 
 ## 0:20–0:35 · Start the real call — **B**
 
-> So we built the check, on the HumanStandard detection API. They answer
-> whether a human made it. We answer what that's worth.
+> We built it on the HumanStandard detection API. They answer whether a human
+> made it. We answer what that's worth.
 >
 > This track has never been scored. I'm clicking Run — a live HumanStandard
 > call, about forty-five seconds. Here's what it's doing.
@@ -117,20 +120,20 @@ evidence slide.*
 ## 2:35–2:50 · What it got right, and what it refused — **A**
 
 > We planted six AI tracks. It caught all six, missed none, wrongly flagged
-> zero humans. Six is a small sample — and the memo says so itself, rather
-> than quoting precision as if it were measured.
+> zero humans. Six is a small sample, and the memo says so itself rather than
+> quoting precision as if it were measured.
 >
 > And two it wouldn't call, carrying six thousand dollars — in the review
-> queue, with the reason and the evidence.
+> queue with the reason.
 
 ---
 
 ## 2:50–3:00 · Close — **B**
 
-> HumanStandard tells you what a recording is. We tell you what it costs —
-> a dollar figure, a review queue, and our own error rate beside it.
+> HumanStandard tells you what a recording is. We tell you what it costs.
 >
-> Zero dependencies, two hundred seventy-one tests, and every verdict real.
+> Zero dependencies, two hundred seventy-five tests, and every verdict you
+> just saw came from a real HumanStandard call.
 
 ---
 

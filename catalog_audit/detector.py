@@ -638,8 +638,13 @@ class MockDetector:
     name = "mock"
     is_mock = True
 
-    def __init__(self, budget: Budget | None = None) -> None:
+    def __init__(self, budget: Budget | None = None,
+                 ignore_cache: bool = False) -> None:
         self.budget = budget
+        # Accepted so both detectors answer the same question. The mock has
+        # no cache to ignore, but a caller holding one from get_detector
+        # cannot know which it has.
+        self.ignore_cache = ignore_cache
 
     def is_cached(self, digest: str) -> bool:
         """Nothing is cached: the mock never spends a real call."""
@@ -697,7 +702,7 @@ def get_detector(force_mock: bool = False, budget: Budget | None = None,
     """Live whenever a key exists. Mock only when asked for, or when there is
     no key at all — and it is loud about it either way."""
     if force_mock or not config.HS_API_KEY:
-        return MockDetector(budget=budget)
+        return MockDetector(budget=budget, ignore_cache=ignore_cache)
     return LiveDetector(budget=budget, ignore_cache=ignore_cache)
 
 

@@ -172,7 +172,7 @@ class TestApiMockPropagation(CatalogFixture):
         from catalog_audit.models import TrackScore
 
         class MockingApi:
-            name, is_mock = "humanstandard", False
+            name, is_mock, ignore_cache = "humanstandard", False, False
 
             def __init__(self):
                 self.budget = None
@@ -299,22 +299,38 @@ class TestIgnoreCache(CatalogFixture):
     point of the run is to watch a real request leave the machine.
     """
 
-    def test_the_detector_is_told_to_skip_the_cache(self):
-        agent = AuditAgent(force_mock=True, ignore_cache=True)
-        # The mock detector has no cache to skip, so assert the wiring on the
-        # live one, which is what a demo actually uses.
+    def detector_with(self, ignore_cache):
+        """A detector chosen as production would choose it, with a key set.
+
+        get_detector falls back to the mock when no key is configured, so a
+        test that just calls it gets whichever detector the machine happens to
+        allow. CI has no key; this box does. Pinning the key makes the test
+        answer the same way in both places.
+        """
+        from catalog_audit import config
         from catalog_audit.detector import get_detector
         from catalog_audit.models import Budget
-        live = get_detector(force_mock=False, budget=Budget(limit=1),
-                            ignore_cache=True)
-        self.assertTrue(getattr(live, "ignore_cache", False))
-        self.assertIsNotNone(agent)
+        original = config.HS_API_KEY
+        try:
+            config.HS_API_KEY = "test-key-for-selection"
+            return get_detector(force_mock=False, budget=Budget(limit=1),
+                                ignore_cache=ignore_cache)
+        finally:
+            config.HS_API_KEY = original
+
+    def test_the_detector_is_told_to_skip_the_cache(self):
+        self.assertTrue(self.detector_with(True).ignore_cache)
 
     def test_default_still_uses_the_cache(self):
-        from catalog_audit.detector import get_detector
-        from catalog_audit.models import Budget
-        live = get_detector(force_mock=False, budget=Budget(limit=1))
-        self.assertFalse(live.ignore_cache)
+        self.assertFalse(self.detector_with(False).ignore_cache)
+
+    def test_both_detectors_answer_the_question(self):
+        """get_detector returns either type; a caller cannot know which."""
+        from catalog_audit.detector import LiveDetector, MockDetector
+        for detector in (MockDetector(), LiveDetector()):
+            with self.subTest(detector=type(detector).__name__):
+                self.assertFalse(detector.ignore_cache)
+        self.assertTrue(MockDetector(ignore_cache=True).ignore_cache)
 
     def test_the_preflight_does_not_promise_a_cache_hit_it_will_ignore(self):
         """With the cache ignored, nothing counts as already scored."""

@@ -134,7 +134,7 @@ class AuditAgent:
         # about this catalog rather than an assumption, and the work is reused
         # by the detection call instead of repeated.
         self._digests = {f: sha256_file(f) for f in files}
-        ignoring = getattr(self.detector, "ignore_cache", False)
+        ignoring = self.detector.ignore_cache
         already = 0 if ignoring else sum(
             1 for f in files if self.detector.is_cached(self._digests[f]))
         needed = len(files) - already
