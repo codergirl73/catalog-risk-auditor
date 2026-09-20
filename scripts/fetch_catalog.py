@@ -25,6 +25,9 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from catalog_audit import http  # noqa: E402
 SEARCH_URL = "https://archive.org/advancedsearch.php"
 METADATA_URL = "https://archive.org/metadata/"
 DOWNLOAD_URL = "https://archive.org/download/"
@@ -35,7 +38,7 @@ AUDIO_FORMATS = ("VBR MP3", "128Kbps MP3", "64Kbps MP3", "MP3")
 
 def _get_json(url: str, timeout: float = 30.0) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
+    with http.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8", errors="replace"))
 
 
@@ -111,7 +114,7 @@ def download(track: dict, dest_dir: Path) -> Path | None:
     url = DOWNLOAD_URL + track["identifier"] + "/" + urllib.parse.quote(track["name"])
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(req, timeout=90) as resp, open(out, "wb") as fh:
+        with http.urlopen(req, timeout=90) as resp, open(out, "wb") as fh:
             while True:
                 chunk = resp.read(1 << 16)
                 if not chunk:

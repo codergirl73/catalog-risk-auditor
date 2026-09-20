@@ -72,7 +72,7 @@ def check_key() -> bool:
         req.add_header(k, v)
 
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with http.urlopen(req, timeout=30) as resp:
             code, body = resp.status, resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         code = exc.code

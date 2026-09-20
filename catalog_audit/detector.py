@@ -39,7 +39,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 
-from . import config
+from . import config, http
 from .models import Budget, TrackScore
 
 
@@ -63,116 +63,219 @@ _CONF_KEYS = ("confidence", "confidence_score", "confidenceScore", "certainty")
 _NEST_KEYS = ("result", "data", "detection", "analysis", "prediction", "output")
 
 
-def map_response(payload: dict) -> tuple:
-    """Map a HumanStandard response onto (ai_score 0-100, confidence 0-1).
+# Scores are reported on 0-100 and confidences on 0-1 throughout, so a
+# response giving either as a percentage or a fraction ends up in one place.
+_PERCENT = 100.0
+_MIDPOINT = 50.0
 
-    Walks a list of plausible field names rather than assuming one schema, so
-    there is a fair chance it works untouched. Verify it against a real
-    response before you rely on it, then delete the branches that do not apply.
+# What to assume when a response carries a score but no confidence in it.
+_ASSUMED_CONFIDENCE = 0.8
+
+# Where the label heuristic lands for each family of words. Only reached for a
+# response that gives no numeric score at all.
+_LABEL_SCORES = (
+    (("ai", "synthetic", "generated"), 88.0),
+    (("hybrid", "mixed", "assisted"), _MIDPOINT),
+    (("human", "authentic", "organic"), 8.0),
+)
+
+# The verdict values observed in practice. "suspicious" is not in the
+# published docs; "uncertain" is. Both mean the detector declined to call it.
+_VERDICTS = ("ai", "human", "uncertain", "suspicious")
+
+
+def _number(value) -> Optional[float]:
+    """Coerce to float, refusing bool.
+
+    `bool` subclasses `int`, so a naive isinstance check turns
+    {"score": True} into a score of 1.0 and then into 100.
     """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _first_number(flat: dict, keys) -> Optional[float]:
+    for key in keys:
+        found = _number(flat.get(key))
+        if found is not None:
+            return found
+    return None
+
+
+def _to_percent(value: float) -> float:
+    """Treat a value in [0, 1] as a fraction and anything above it as already
+    being a percentage."""
+    return value * _PERCENT if 0.0 <= value <= 1.0 else value
+
+
+def _flatten(payload: dict) -> dict:
+    """Merge one level of plausible nesting up into the top level."""
     flat = dict(payload)
     for key in _NEST_KEYS:
         inner = payload.get(key)
         if isinstance(inner, dict):
             flat.update(inner)
+    return flat
 
-    # Observed against the live API: `ai_probability` is present on every
-    # response and is already the thing this tool wants -- a direct 0-1
-    # likelihood, monotone, and not conditioned on which verdict was reached.
-    # Prefer it over reconstructing a score from verdict plus confidence,
-    # which is the same number viewed through a decision.
-    prob = flat.get("ai_probability")
-    if isinstance(prob, (int, float)) and not isinstance(prob, bool):
-        p_val = float(prob)
-        if p_val <= 1.0:
-            p_val *= 100.0
-        conf = flat.get("confidence")
-        conf = (float(conf) if isinstance(conf, (int, float))
-                and not isinstance(conf, bool) else 0.8)
-        if conf > 1.0:
-            conf /= 100.0
-        return (round(max(0.0, min(100.0, p_val)), 1),
-                round(max(0.0, min(1.0, conf)), 3))
 
-    # Otherwise reconstruct from the verdict. "suspicious" is a real value the
-    # published docs do not list, alongside ai / human / uncertain.
+def _confidence(flat: dict) -> float:
+    """The detector's confidence in its own answer, normalised to 0-1."""
+    found = _first_number(flat, _CONF_KEYS)
+    if found is None:
+        return _ASSUMED_CONFIDENCE
+    return found / _PERCENT if found > 1.0 else found
+
+
+# --- scoring strategies, tried in order -----------------------------------
+# Each returns a score already on 0-100, or None to defer to the next.
+
+def _score_from_probability(flat: dict) -> Optional[float]:
+    """`ai_probability`: a direct likelihood, present on every live response.
+
+    Preferred over reconstructing a score from verdict plus confidence, which
+    is the same quantity seen through a decision and lossier for it.
+    """
+    found = _number(flat.get("ai_probability"))
+    return None if found is None else _to_percent(found)
+
+
+def _score_from_verdict(flat: dict) -> Optional[float]:
+    """Reconstruct a score from the verdict and how sure the detector is.
+
+    Confidence is confidence *in the verdict*, so it pushes away from the
+    midpoint in whichever direction the verdict points. An uncertain verdict
+    sits at the midpoint whatever its confidence, which is the honest place
+    for it.
+    """
     verdict = str(flat.get("verdict") or "").strip().lower()
-    raw_conf = flat.get("confidence")
-    if verdict in ("ai", "human", "uncertain", "suspicious") and isinstance(
-            raw_conf, (int, float)) and not isinstance(raw_conf, bool):
-        c = float(raw_conf)
-        if c > 1.0:
-            c /= 100.0
-        c = max(0.0, min(1.0, c))
-        # Confidence is confidence *in the verdict*, so it pushes away from the
-        # midpoint in whichever direction the verdict points. An uncertain
-        # verdict sits at 50 whatever its confidence, which is the honest
-        # place for it.
-        if verdict == "ai":
-            score = 50.0 + c * 50.0
-        elif verdict == "human":
-            score = 50.0 - c * 50.0
-        else:
-            score = 50.0
-        return round(score, 1), round(c, 3)
+    if verdict not in _VERDICTS:
+        return None
+    raw = _number(flat.get("confidence"))
+    if raw is None:
+        return None
+    conf = max(0.0, min(1.0, raw / _PERCENT if raw > 1.0 else raw))
+    if verdict == "ai":
+        return _MIDPOINT + conf * _MIDPOINT
+    if verdict == "human":
+        return _MIDPOINT - conf * _MIDPOINT
+    return _MIDPOINT
 
 
-    ai_score: Optional[float] = None
-    for key in _AI_KEYS:
-        val = flat.get(key)
-        if isinstance(val, (int, float)) and not isinstance(val, bool):
-            ai_score = float(val)
-            break
+def _score_from_ai_keys(flat: dict) -> Optional[float]:
+    found = _first_number(flat, _AI_KEYS)
+    return None if found is None else _to_percent(found)
 
-    if ai_score is None:
-        for key in _HUMAN_KEYS:
-            val = flat.get(key)
-            if isinstance(val, (int, float)) and not isinstance(val, bool):
-                v = float(val)
-                ai_score = 100.0 - (v * 100.0 if v <= 1.0 else v)
-                break
 
-    if ai_score is None:
-        label = str(flat.get("label") or flat.get("classification")
-                    or flat.get("verdict") or "").lower()
-        if any(w in label for w in ("ai", "synthetic", "generated")):
-            ai_score = 88.0
-        elif any(w in label for w in ("hybrid", "mixed", "assisted")):
-            ai_score = 50.0
-        elif any(w in label for w in ("human", "authentic", "organic")):
-            ai_score = 8.0
+def _score_from_human_keys(flat: dict) -> Optional[float]:
+    """Invert a human-ness score into an AI-ness one."""
+    found = _first_number(flat, _HUMAN_KEYS)
+    return None if found is None else _PERCENT - _to_percent(found)
 
-    if ai_score is None:
-        raise ValueError(
-            "No score found in the HumanStandard response. Fix map_response() "
-            "in catalog_audit/detector.py. Top-level keys were: "
-            + ", ".join(sorted(str(k) for k in flat))
-        )
 
-    confidence: Optional[float] = None
-    for key in _CONF_KEYS:
-        val = flat.get(key)
-        if isinstance(val, (int, float)) and not isinstance(val, bool):
-            confidence = float(val)
-            break
+def _score_from_label(flat: dict) -> Optional[float]:
+    """Last resort: a worded classification with no number attached."""
+    label = str(flat.get("label") or flat.get("classification")
+                or flat.get("verdict") or "").lower()
+    for words, score in _LABEL_SCORES:
+        if any(word in label for word in words):
+            return score
+    return None
 
-    if 0.0 <= ai_score <= 1.0:
-        ai_score *= 100.0
-    if confidence is None:
-        confidence = 0.8
-    elif confidence > 1.0:
-        confidence /= 100.0
 
-    return round(max(0.0, min(100.0, ai_score)), 1), round(
-        max(0.0, min(1.0, confidence)), 3)
+_STRATEGIES = (_score_from_probability, _score_from_verdict,
+               _score_from_ai_keys, _score_from_human_keys, _score_from_label)
+
+
+def map_response(payload: dict) -> tuple:
+    """Map a HumanStandard response onto (ai_score 0-100, confidence 0-1).
+
+    Tries each known shape in turn rather than assuming one, because the
+    published reference and the live API disagree in several places. A
+    response matching none of them raises, naming the keys it did carry --
+    inventing a score would be worse than failing.
+    """
+    flat = _flatten(payload)
+
+    for strategy in _STRATEGIES:
+        score = strategy(flat)
+        if score is not None:
+            return (round(max(0.0, min(_PERCENT, score)), 1),
+                    round(max(0.0, min(1.0, _confidence(flat))), 3))
+
+    raise ValueError(
+        "No score found in the HumanStandard response. Fix map_response() "
+        "in catalog_audit/detector.py. Top-level keys were: "
+        + ", ".join(sorted(str(k) for k in flat))
+    )
+
+
+# The live API sends risk_segments_full_mix; the docs call it risk_segments;
+# the hybrid endpoint adds per-stem variants. Preference order, first wins.
+_SEGMENT_KEYS = ("risk_segments_full_mix", "risk_segments",
+                 "risk_segments_vocal", "risk_segments_instrumental")
+
+# The wire form is snake_case; the published docs print the display form.
+_LABEL_DISPLAY = {"ai_generated": "AI-Generated", "ai_assisted": "AI-Assisted"}
+
+
+def _text(payload: dict, key: str) -> str:
+    value = payload.get(key)
+    return str(value) if isinstance(value, (str, int, float)) else ""
+
+
+def _decimal(payload: dict, key: str) -> float:
+    return _number(payload.get(key)) or 0.0
+
+
+def _tier_verdicts(payload: dict) -> dict:
+    tiers = payload.get("tier_verdicts")
+    return {k: str(v).lower() for k, v in tiers.items()} if isinstance(
+        tiers, dict) else {}
+
+
+def _segments(payload: dict) -> list:
+    """Per-window risk with real timestamps, from whichever key carries it."""
+    for key in _SEGMENT_KEYS:
+        raw = payload.get(key)
+        if isinstance(raw, list) and raw:
+            return [
+                {"start": _decimal(seg, "start"),
+                 "end": _decimal(seg, "end"),
+                 "risk": _decimal(seg, "risk")}
+                for seg in raw if isinstance(seg, dict)
+            ]
+    return []
+
+
+def _timeline(payload: dict, segments: list) -> list:
+    """The flat per-window risk list, derived from segments when absent."""
+    raw = payload.get("risk_timeline")
+    if isinstance(raw, list):
+        found = [_number(x) for x in raw]
+        timeline = [x for x in found if x is not None]
+        if timeline:
+            return timeline
+    return [seg["risk"] for seg in segments]
+
+
+def _label_basis(payload: dict) -> list:
+    """Plain-language reasons for the industry label.
+
+    Absent from the published response table entirely, and the best short
+    evidence line the API produces, so it is kept.
+    """
+    basis = payload.get("industry_label_basis")
+    if isinstance(basis, str):
+        basis = [basis]
+    return [str(b) for b in basis] if isinstance(basis, list) else []
 
 
 def parse_result(payload: dict) -> dict:
     """Pull the fields a buyer-facing report can actually use out of a result.
 
-    Tolerant by design: every field is optional, because a response that is
-    missing `origin_map` should still produce a verdict rather than an
-    exception.
+    Tolerant by design: every field is optional, because a response missing
+    `origin_map` should still produce a verdict rather than an exception.
     """
     if not isinstance(payload, dict):
         return {}
@@ -181,78 +284,31 @@ def parse_result(payload: dict) -> dict:
     if isinstance(inner, dict):
         payload = {**payload, **inner}
 
-    def _s(key, default=""):
-        val = payload.get(key)
-        return str(val) if isinstance(val, (str, int, float)) else default
-
-    def _f(key):
-        val = payload.get(key)
-        return float(val) if isinstance(val, (int, float)) and not isinstance(
-            val, bool) else 0.0
-
-    tiers = payload.get("tier_verdicts")
-    tiers = {k: str(v).lower() for k, v in tiers.items()} if isinstance(
-        tiers, dict) else {}
-
-    timeline = payload.get("risk_timeline")
-    timeline = [float(x) for x in timeline
-                if isinstance(x, (int, float)) and not isinstance(x, bool)
-                ] if isinstance(timeline, list) else []
-
-    # The live API sends risk_segments_full_mix (plus per-stem variants on the
-    # hybrid endpoint); the docs call it risk_segments. Take whichever is
-    # there, preferring the full mix, and derive the flat timeline from it so
-    # both shapes end up in the same place.
-    segments = []
-    for key in ("risk_segments_full_mix", "risk_segments",
-                "risk_segments_vocal", "risk_segments_instrumental"):
-        raw = payload.get(key)
-        if isinstance(raw, list) and raw:
-            segments = [
-                {"start": float(seg.get("start", 0.0)),
-                 "end": float(seg.get("end", 0.0)),
-                 "risk": float(seg.get("risk", 0.0))}
-                for seg in raw if isinstance(seg, dict)
-            ]
-            break
-    if segments and not timeline:
-        timeline = [seg["risk"] for seg in segments]
-
     origin_map = payload.get("origin_map")
     origin_map = origin_map if isinstance(origin_map, dict) else {}
 
-    # The live API returns "ai_generated"; the docs print "AI-Generated".
-    # Normalise for display so the memo does not show a wire value.
-    label = _s("industry_label")
-    if label:
-        label = {"ai_generated": "AI-Generated",
-                 "ai_assisted": "AI-Assisted"}.get(label.strip().lower(), label)
+    label = _text(payload, "industry_label")
+    label = _LABEL_DISPLAY.get(label.strip().lower(), label)
 
-    # industry_label_basis is an array of plain-language reasons, and is not
-    # in the published response table at all. It is the best short evidence
-    # line the API produces, so it is kept.
-    basis = payload.get("industry_label_basis")
-    if isinstance(basis, str):
-        basis = [basis]
-    basis = [str(b) for b in basis] if isinstance(basis, list) else []
+    segments = _segments(payload)
 
     return {
-        "verdict": _s("verdict").lower(),
-        "tier_verdicts": tiers,
-        "origin": _s("origin"),
-        "origin_confidence": _f("origin_confidence"),
+        "verdict": _text(payload, "verdict").lower(),
+        "tier_verdicts": _tier_verdicts(payload),
+        "origin": _text(payload, "origin"),
+        "origin_confidence": _decimal(payload, "origin_confidence"),
         "origin_summary": str(origin_map.get("summary_line") or ""),
-        "origin_map_evidence": _s("origin_map_evidence"),
-        "headline_verdict": _s("headline_verdict").lower(),
+        "origin_map_evidence": _text(payload, "origin_map_evidence"),
+        "headline_verdict": _text(payload, "headline_verdict").lower(),
         "industry_label": label,
-        "industry_label_status": _s("industry_label_status").lower(),
-        "industry_label_basis": basis,
-        "risk_timeline": timeline,
+        "industry_label_status": _text(payload, "industry_label_status").lower(),
+        "industry_label_basis": _label_basis(payload),
+        "risk_timeline": _timeline(payload, segments),
         "risk_segments": segments,
-        "duration_s": _f("duration_sec"),
-        "model_version": _s("model_version"),
+        "duration_s": _decimal(payload, "duration_sec"),
+        "model_version": _text(payload, "model_version"),
         "mock": payload.get("mock") is True,
-        "mock_scenario": _s("mock_scenario"),
+        "mock_scenario": _text(payload, "mock_scenario"),
     }
 
 
@@ -512,7 +568,7 @@ class LiveDetector:
         """
         self._throttle()
         try:
-            with urllib.request.urlopen(req, timeout=config.HS_TIMEOUT_S) as resp:
+            with http.urlopen(req, timeout=config.HS_TIMEOUT_S) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:400]

@@ -36,6 +36,9 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from catalog_audit import http  # noqa: E402
 
 DATASET = "awsaf49/sonics"
 LICENSE = "CC BY-NC 4.0"
@@ -68,12 +71,12 @@ class HTTPRangeFile(io.RawIOBase):
 
     def _open(self, headers: dict):
         req = urllib.request.Request(self.url, headers=headers)
-        return urllib.request.urlopen(req, timeout=90)
+        return http.urlopen(req, timeout=90)
 
     def _length(self) -> int:
         req = urllib.request.Request(
             self.url, headers={"User-Agent": USER_AGENT}, method="HEAD")
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with http.urlopen(req, timeout=60) as resp:
             if resp.headers.get("Accept-Ranges") != "bytes":
                 raise RuntimeError("server will not serve byte ranges")
             return int(resp.headers["Content-Length"])

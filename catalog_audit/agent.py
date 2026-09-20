@@ -10,10 +10,14 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from typing import Optional
 
 from . import config, evaluation, tiering, valuation
 from .detector import get_detector, sha256_file
 from .models import Asset, AuditResult, Budget, Event, Tier
+
+# How often the scoring loop reports progress.
+PROGRESS_EVERY = 10
 
 PLAN = [
     "Inventory the catalog folder and estimate the call budget",
@@ -31,24 +35,33 @@ def _ev(type_, title="", detail="", **data) -> Event:
 
 
 class AuditAgent:
-    def __init__(self, force_mock: bool = False, budget_limit: int = None) -> None:
+    def __init__(self, force_mock: bool = False,
+                 budget_limit: Optional[int] = None) -> None:
         limit = config.HS_CREDIT_BUDGET if budget_limit is None else budget_limit
         self.budget = Budget(limit=limit)
         self.detector = get_detector(force_mock=force_mock, budget=self.budget)
-        self.result: AuditResult = None
+        self.result: Optional[AuditResult] = None
+        # Products of the steps, shared between them in PLAN order.
+        self._digests: dict = {}
+        self._assets: list = []
+        self._review: list = []
 
     def run(self, catalog_dir, royalties_csv=None, truth_csv=None,
             multiple=None, asking_price=None, catalog_name=None):
-        """Yield Events as the audit proceeds."""
+        """Yield Events as the audit proceeds.
+
+        Each numbered step is its own generator, in the order PLAN declares
+        them. A test asserts the steps executed equal the steps announced, so
+        the plan cannot drift away from the work.
+        """
         catalog_dir = Path(catalog_dir)
-        result = AuditResult(
+        self.result = AuditResult(
             catalog_name=catalog_name or catalog_dir.name,
             catalog_dir=str(catalog_dir),
             provider=self.detector.name,
             mock_mode=self.detector.is_mock,
             budget=self.budget,
         )
-        self.result = result
 
         yield _ev("plan", "Audit plan", "%d steps" % len(PLAN), steps=PLAN)
 
@@ -59,9 +72,27 @@ class AuditAgent:
                 "hashes and mean nothing. Do not record a demo in this mode.",
             )
 
-        # 1. inventory --------------------------------------------------
+        files = self._find_audio(catalog_dir)
+        yield from self._step_inventory(catalog_dir, files)
+        if not files:
+            return
+
+        yield from self._step_score(files)
+        yield from self._step_tier()
+        yield from self._step_escalate()
+        yield from self._step_revenue(royalties_csv)
+        yield from self._step_value(multiple, asking_price)
+        yield from self._step_evaluate(truth_csv)
+
+        self.result.manifest_sha256 = self._manifest(self._assets)
+        yield _ev("done", "Audit complete",
+                  "manifest %s" % self.result.manifest_sha256[:16])
+
+    # -- steps -----------------------------------------------------------
+
+    def _step_inventory(self, catalog_dir: Path, files: list):
+        """Count the catalog, then price the run before committing to it."""
         yield _ev("step", PLAN[0])
-        files = self._inventory(catalog_dir)
         if not files:
             yield _ev("error", "Empty catalog",
                       "No audio files found under %s" % catalog_dir)
@@ -75,10 +106,12 @@ class AuditAgent:
         )
 
         # Hash every file once. The digest is both the cache key and the
-        # evidence trail, so doing it up front means the budget estimate below
-        # is a fact about this catalog rather than an assumption.
-        digests = {f: sha256_file(f) for f in files}
-        already = sum(1 for f in files if self.detector.is_cached(digests[f]))
+        # evidence trail, so doing it up front makes the estimate below a fact
+        # about this catalog rather than an assumption, and the work is reused
+        # by the detection call instead of repeated.
+        self._digests = {f: sha256_file(f) for f in files}
+        already = sum(1 for f in files
+                      if self.detector.is_cached(self._digests[f]))
         needed = len(files) - already
 
         yield _ev(
@@ -102,47 +135,54 @@ class AuditAgent:
                    needed - self.budget.limit),
             )
 
-        # 2. score ------------------------------------------------------
+    def _step_score(self, files: list):
+        """Score every asset, reporting progress and what it cost."""
         yield _ev("step", PLAN[1],
                   "detector: %s | budget %d" % (self.detector.name,
                                                 self.budget.limit))
-        assets = []
-        cached_n = 0
-        failed_n = 0
+        assets, cached_n, failed_n = [], 0, 0
         for i, path in enumerate(files, 1):
-            score = self.detector.detect(path, digest=digests[path])
-            if score.cached:
-                cached_n += 1
-            if not score.ok:
-                failed_n += 1
+            score = self.detector.detect(path, digest=self._digests[path])
+            cached_n += 1 if score.cached else 0
+            failed_n += 0 if score.ok else 1
             assets.append(Asset(filename=path.name, score=score))
-            if i % 10 == 0 or i == len(files):
+            if i % PROGRESS_EVERY == 0 or i == len(files):
                 yield _ev(
                     "tool_result", "humanstandard.detect",
                     "%d/%d scored (%d from cache, %d failed)"
                     % (i, len(files), cached_n, failed_n),
                     done=i, total=len(files),
                 )
-        result.assets = assets
 
-        # HumanStandard's ?mock= fixtures come back over the real API, from a
-        # real key, with real field shapes -- and carry "mock": true. A run
-        # built on them is a mock run no matter which detector produced it, so
-        # the flag is promoted onto the result and the memo refuses it.
+        self._assets = assets
+        self.result.assets = assets
+
+        yield from self._warn_mock_responses(assets)
+        yield from self._report_budget(assets, failed_n)
+
+    def _warn_mock_responses(self, assets: list):
+        """A fixture from the real API is still a fixture.
+
+        HumanStandard's ?mock= responses arrive over the real endpoint, from a
+        real key, with real field shapes -- and carry "mock": true. Promoting
+        that onto the result is what stops one reaching a memo.
+        """
         mocked = [a for a in assets if a.score and a.score.mock]
-        if mocked:
-            result.mock_mode = True
-            scenarios = sorted({a.score.mock_scenario for a in mocked
-                                if a.score.mock_scenario})
-            yield _ev(
-                "warn", "API mock responses detected",
-                "%d of %d responses were HumanStandard fixtures%s, not real "
-                "detections. The run is marked mock and the memo will refuse "
-                "to render. Unset HS_MOCK_SCENARIO for a real audit."
-                % (len(mocked), len(assets),
-                   " (%s)" % ", ".join(scenarios) if scenarios else ""),
-            )
+        if not mocked:
+            return
+        self.result.mock_mode = True
+        scenarios = sorted({a.score.mock_scenario for a in mocked
+                            if a.score.mock_scenario})
+        yield _ev(
+            "warn", "API mock responses detected",
+            "%d of %d responses were HumanStandard fixtures%s, not real "
+            "detections. The run is marked mock and the memo will refuse to "
+            "render. Unset HS_MOCK_SCENARIO for a real audit."
+            % (len(mocked), len(assets),
+               " (%s)" % ", ".join(scenarios) if scenarios else ""),
+        )
 
+    def _report_budget(self, assets: list, failed_n: int):
         yield _ev(
             "tool_result", "budget spent",
             "%d live calls spent of %d budgeted, %d served from cache, "
@@ -151,7 +191,6 @@ class AuditAgent:
                self.budget.served_from_cache, self.budget.skipped),
             spent=self.budget.spent, remaining=self.budget.remaining,
         )
-
         if self.budget.skipped:
             yield _ev(
                 "warn", "Budget exhausted mid-run",
@@ -159,18 +198,18 @@ class AuditAgent:
                 "failures and excluded from the clean base."
                 % self.budget.skipped,
             )
-
         if failed_n:
             yield _ev(
                 "warn", "Detection failures",
                 "%d of %d assets could not be scored and are excluded from the "
-                "clean base rather than assumed safe." % (failed_n, len(files)),
+                "clean base rather than assumed safe."
+                % (failed_n, len(assets)),
             )
 
-        # 3. tier -------------------------------------------------------
+    def _step_tier(self):
         yield _ev("step", PLAN[2], config.thresholds_summary())
-        review = tiering.apply(assets)
-        counts = tiering.counts(assets)
+        self._review = tiering.apply(self._assets)
+        counts = tiering.counts(self._assets)
         yield _ev(
             "finding", "Tier breakdown",
             "clean %d | contested %d | suspect %d | error %d"
@@ -179,86 +218,83 @@ class AuditAgent:
             counts={k.value: v for k, v in counts.items()},
         )
 
-        # 4. escalate ---------------------------------------------------
-        # The queue itself is assembled after the revenue join below, because
-        # an entry is only actionable once it carries what the asset earns --
-        # a reviewer with limited time should start at the top of the money,
-        # not the top of the alphabet.
+    def _step_escalate(self):
+        """Announce the queue. It is assembled after the revenue join below,
+        because an entry is only actionable once it carries what the asset
+        earns -- a reviewer with an hour should spend it on the assets that
+        matter, not on the top of the alphabet."""
         yield _ev("step", PLAN[3])
         yield _ev(
             "tool_result", "review_queue",
-            "%d assets routed to human review" % len(review),
-            count=len(review),
+            "%d assets routed to human review" % len(self._review),
+            count=len(self._review),
         )
 
-        # 5. revenue ----------------------------------------------------
+    def _step_revenue(self, royalties_csv):
         yield _ev("step", PLAN[4])
         if royalties_csv:
             royalties = valuation.load_royalties(royalties_csv)
-            matched = valuation.attach_royalties(assets, royalties)
+            matched = valuation.attach_royalties(self._assets, royalties)
             yield _ev(
                 "tool_result", "load_royalties",
-                "%d of %d assets matched to a revenue row" % (matched, len(assets)),
+                "%d of %d assets matched to a revenue row"
+                % (matched, len(self._assets)),
             )
-            if matched < len(assets):
+            if matched < len(self._assets):
                 yield _ev(
                     "warn", "Unmatched assets",
-                    "%d assets carry no reported revenue and contribute nothing "
-                    "to the exposure figure." % (len(assets) - matched),
+                    "%d assets carry no reported revenue and contribute "
+                    "nothing to the exposure figure."
+                    % (len(self._assets) - matched),
                 )
         else:
             yield _ev("tool_result", "load_royalties",
-                      "No revenue sheet supplied; exposure will be by count only.")
+                      "No revenue sheet supplied; exposure will be by count "
+                      "only.")
 
-        result.review_queue = [
+        self.result.review_queue = [
             {"filename": a.filename,
              "ai_score": a.ai_score,
              "annual_usd": a.annual_usd,
              "reason": a.notes[-1] if a.notes else ""}
-            for a in sorted(review, key=lambda a: -a.annual_usd)
+            for a in sorted(self._review, key=lambda a: -a.annual_usd)
         ]
 
-        # 6. value ------------------------------------------------------
+    def _step_value(self, multiple, asking_price):
         yield _ev("step", PLAN[5])
-        val = valuation.value(assets, multiple=multiple,
+        val = valuation.value(self._assets, multiple=multiple,
                               asking_price_usd=asking_price)
-        result.valuation = val
+        self.result.valuation = val
         yield _ev("verdict", "Exposure", valuation.headline(val),
                   valuation=val.__dict__)
 
-        # 7. evaluate ---------------------------------------------------
+    def _step_evaluate(self, truth_csv):
         yield _ev("step", PLAN[6])
-        if truth_csv:
-            truth = evaluation.load_ground_truth(truth_csv)
-            origins = evaluation.load_origins(truth_csv)
-            matched = evaluation.attach(assets, truth, origins)
-            ev = evaluation.evaluate(assets)
-            result.evaluation = ev
-            yield _ev("finding", "Accuracy against ground truth",
-                      evaluation.summary(ev), labelled=matched)
-        else:
+        if not truth_csv:
             yield _ev("tool_result", "evaluate",
                       "No ground-truth file supplied; no accuracy reported.")
-
-        result.manifest_sha256 = self._manifest(assets)
-        yield _ev("done", "Audit complete",
-                  "manifest %s" % result.manifest_sha256[:16])
+            return
+        truth = evaluation.load_ground_truth(truth_csv)
+        origins = evaluation.load_origins(truth_csv)
+        matched = evaluation.attach(self._assets, truth, origins)
+        self.result.evaluation = evaluation.evaluate(self._assets)
+        yield _ev("finding", "Accuracy against ground truth",
+                  evaluation.summary(self.result.evaluation), labelled=matched)
 
     # -- helpers ---------------------------------------------------------
     @staticmethod
-    def _inventory(catalog_dir: Path) -> list:
-        out = [
+    def _find_audio(catalog_dir: Path) -> list:
+        return [
             p for p in sorted(catalog_dir.rglob("*"))
             if p.is_file() and p.suffix.lower() in config.AUDIO_EXTENSIONS
         ]
-        return out
 
     @staticmethod
     def _manifest(assets: list) -> str:
         """One hash over the whole audited set, for the audit trail."""
-        h = hashlib.sha256()
-        for a in sorted(assets, key=lambda x: x.filename):
-            h.update(a.filename.encode())
-            if a.score:
-                h.update(a.score.sha256.encode())
-        return h.hexdigest()
+        digest = hashlib.sha256()
+        for asset in sorted(assets, key=lambda a: a.filename):
+            digest.update(asset.filename.encode())
+            if asset.score:
+                digest.update(asset.score.sha256.encode())
+        return digest.hexdigest()

@@ -83,7 +83,10 @@ def collect(catalog_dir: Path) -> list:
 def assign_earnings(rows: list, total_usd: float, ai_ratio: float,
                     seed: int) -> None:
     """Distribute revenue with a steep head and a long tail."""
-    rng = random.Random(seed)
+    # Deliberately seeded and deliberately not cryptographic: these are
+    # demonstration royalty figures, and the whole point is that the same seed
+    # reproduces the same catalog for anyone re-running the audit.
+    rng = random.Random(seed)  # nosec B311
 
     weights = []
     for row in rows:
