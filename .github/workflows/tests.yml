@@ -35,5 +35,10 @@ jobs:
       - name: Confirm no secret was committed
         run: |
           ! git ls-files | grep -Ei '^\.env$|\.key$'
-          ! git grep -nEi 'HS_API_KEY[[:space:]]*=[[:space:]]*["'\''a-zA-Z0-9]' -- \
-              ':!.env.example' ':!*.md' ':!catalog_audit/config.py' || true
+          # The API evidence file is committed on purpose as a submission
+          # artefact. Assert it never starts carrying a credential.
+          if [ -f out/api_evidence.json ]; then
+            ! grep -qiE '"(authorization|api_key|hs_api_key)":[[:space:]]*"[A-Za-z0-9_-]{16,}' \
+                out/api_evidence.json
+            grep -q 'redacted' out/api_evidence.json
+          fi

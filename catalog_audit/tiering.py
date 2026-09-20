@@ -17,8 +17,8 @@ from . import config
 from .models import Asset, Tier, TrackScore
 
 
-def _timestamp(index: int, window_s: float = 2.5) -> str:
-    total = int(index * window_s)
+def _timestamp(seconds: float) -> str:
+    total = int(max(0.0, seconds))
     return "%d:%02d" % (total // 60, total % 60)
 
 
@@ -31,18 +31,19 @@ def _evidence(score: TrackScore) -> str:
     bits = []
     if score.industry_label_basis:
         bits.append(score.industry_label_basis[0].rstrip(".") + ".")
-    if score.origin:
+    # origin names a reference population, which may be a generator or the
+    # verified-human set. Only the former is worth putting in an escalation.
+    if score.origin and score.origin.lower() != "human":
         if score.origin_summary:
             bits.append("Attributed to %s: %s"
                         % (score.origin.title(), score.origin_summary))
         else:
             bits.append("Attributed to %s (%.0f%% confidence)."
                         % (score.origin.title(), score.origin_confidence * 100))
-    if score.risk_timeline:
-        idx, peak = score.peak_risk_window
-        if peak >= 0.6:
-            bits.append("Risk peaks at %.0f%% around %s."
-                        % (peak * 100, _timestamp(idx)))
+    at, peak = score.peak_risk
+    if at >= 0 and peak >= 0.6:
+        bits.append("Risk peaks at %.0f%% from %s."
+                    % (peak * 100, _timestamp(at)))
     return " " + " ".join(bits) if bits else ""
 
 

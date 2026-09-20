@@ -199,6 +199,25 @@ def parse_result(payload: dict) -> dict:
                 if isinstance(x, (int, float)) and not isinstance(x, bool)
                 ] if isinstance(timeline, list) else []
 
+    # The live API sends risk_segments_full_mix (plus per-stem variants on the
+    # hybrid endpoint); the docs call it risk_segments. Take whichever is
+    # there, preferring the full mix, and derive the flat timeline from it so
+    # both shapes end up in the same place.
+    segments = []
+    for key in ("risk_segments_full_mix", "risk_segments",
+                "risk_segments_vocal", "risk_segments_instrumental"):
+        raw = payload.get(key)
+        if isinstance(raw, list) and raw:
+            segments = [
+                {"start": float(seg.get("start", 0.0)),
+                 "end": float(seg.get("end", 0.0)),
+                 "risk": float(seg.get("risk", 0.0))}
+                for seg in raw if isinstance(seg, dict)
+            ]
+            break
+    if segments and not timeline:
+        timeline = [seg["risk"] for seg in segments]
+
     origin_map = payload.get("origin_map")
     origin_map = origin_map if isinstance(origin_map, dict) else {}
 
@@ -229,6 +248,7 @@ def parse_result(payload: dict) -> dict:
         "industry_label_status": _s("industry_label_status").lower(),
         "industry_label_basis": basis,
         "risk_timeline": timeline,
+        "risk_segments": segments,
         "duration_s": _f("duration_sec"),
         "model_version": _s("model_version"),
         "mock": payload.get("mock") is True,

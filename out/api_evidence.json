@@ -1,0 +1,88 @@
+{
+  "request": {
+    "url": "https://app.jobsbyhumans.com/api/analyze?detail=full",
+    "method": "POST",
+    "auth": "Authorization: Bearer <redacted>",
+    "file": "DWK123__ProleteR_-_01_-_April_Showers.mp3"
+  },
+  "response": {
+    "verdict": "human",
+    "confidence": 0.9914,
+    "confidence_full_mix": 0.9914,
+    "ai_probability": 0.0086,
+    "origin": "human",
+    "origin_confidence": 0.6,
+    "duration_sec": 269.064,
+    "model_version": "hsv-1.3.1",
+    "processed_at": "2026-09-20T16:31:21.750000+00:00",
+    "origin_map_evidence": "https://firebasestorage.googleapis.com/v0/b/hsvr-51d2b.firebasestorage.app/o/origin_maps%2Fe1d69bfd2016610e7ec796c0b440084cb0df3ddb994938a38ffe5fe43b1d0ed2.png?alt=media&token=e4ed0f92-60f9-4646-b2b2-cababaed8ffa",
+    "origin_map": {
+      "nearest_population": "Human",
+      "summary_line": "25 of its 25 nearest reference recordings are verified human recordings.",
+      "neighborhood": {
+        "k": 25,
+        "counts": {
+          "Human": 25
+        },
+        "dominant": true
+      }
+    },
+    "risk_segments_full_mix": [
+      {
+        "start": 0.0,
+        "end": 20.0,
+        "risk": 0.0
+      },
+      {
+        "start": 20.0,
+        "end": 22.5,
+        "risk": 0.4671
+      },
+      {
+        "start": 22.5,
+        "end": 31.25,
+        "risk": 0.0
+      },
+      {
+        "start": 31.25,
+        "end": 33.75,
+        "risk": 0.2556
+      },
+      {
+        "start": 33.75,
+        "end": 60.0,
+        "risk": 0.0
+      }
+    ],
+    "risk_segments_vocal": [],
+    "risk_segments_instrumental": [],
+    "tier_verdicts": {
+      "press_safe": "human",
+      "human_safe": "human",
+      "recall": "human"
+    }
+  },
+  "interpreted": {
+    "ai_score": 0.9,
+    "confidence": 0.991,
+    "verdict": "human",
+    "tier_verdicts": {
+      "press_safe": "human",
+      "human_safe": "human",
+      "recall": "human"
+    },
+    "origin": "human",
+    "origin_confidence": 0.6,
+    "origin_summary": "25 of its 25 nearest reference recordings are verified human recordings.",
+    "origin_map_evidence": "https://firebasestorage.googleapis.com/v0/b/hsvr-51d2b.firebasestorage.app/o/origin_maps%2Fe1d69bfd2016610e7ec796c0b440084cb0df3ddb994938a38ffe5fe43b1d0ed2.png?alt=media&token=e4ed0f92-60f9-4646-b2b2-cababaed8ffa",
+    "headline_verdict": "",
+    "industry_label": "",
+    "industry_label_status": "",
+    "industry_label_basis": [],
+    "risk_timeline": [],
+    "duration_s": 269.064,
+    "model_version": "hsv-1.3.1",
+    "mock": false,
+    "mock_scenario": ""
+  }
+}

@@ -14,6 +14,10 @@ data/*
 # outputs
 out/
 !out/.gitkeep
+# The evidence of a real API call is a submission artefact, and carries no
+# credential -- the request record stores which auth style was used, not the
+# key. Verified by CI.
+!out/api_evidence.json
 
 # python
 __pycache__/

@@ -196,7 +196,8 @@ def _origin_section(assets) -> str:
         sc = a.score
         if not sc or not sc.ok or not sc.origin:
             continue
-        row = tally.setdefault(sc.origin, {"n": 0, "usd": 0.0, "line": ""})
+        row = tally.setdefault(sc.origin.lower(),
+                               {"n": 0, "usd": 0.0, "line": ""})
         row["n"] += 1
         row["usd"] += a.annual_usd
         if not row["line"] and sc.origin_summary:
@@ -205,25 +206,40 @@ def _origin_section(assets) -> str:
     if not tally:
         return ""
 
+    # "human" is a reference population like any other, but it is the one
+    # that is good news. Generators first, the human set last, so the table
+    # reads worst-first like the rest of the memo.
+    def order(item):
+        name, v = item
+        return (name == "human", -v["n"])
+
     rows = "".join(
         "<tr><td>%s</td><td class='n'>%d</td><td class='n'>$%s</td>"
         "<td>%s</td></tr>"
-        % (html.escape(name.title()), v["n"], f"{v['usd']:,.0f}",
-           html.escape(v["line"][:110]))
-        for name, v in sorted(tally.items(), key=lambda kv: -kv[1]["n"]))
+        % ("Verified human recordings" if name == "human"
+           else html.escape(name.title()),
+           v["n"], f"{v['usd']:,.0f}", html.escape(v["line"][:110]))
+        for name, v in sorted(tally.items(), key=order))
+
+    generators = sum(v["n"] for k, v in tally.items() if k != "human")
 
     return """
     <h2>Attribution</h2>
-    <p>HumanStandard places each recording against reference populations of
-    verified human music and known generators. Where a track sits clearly
-    inside one of those populations, the generator is named.</p>
+    <p>HumanStandard places every recording against reference populations
+    &mdash; verified human music, and the known generators (Suno, Udio,
+    ElevenLabs, Lyria, Treblo). Where a track sits clearly inside one of
+    those populations, it is named. %s</p>
     <div class="wrapt"><table>
-      <thead><tr><th>Attributed to</th><th class="n">Tracks</th>
+      <thead><tr><th>Nearest population</th><th class="n">Tracks</th>
       <th class="n">Annual</th><th>Basis</th></tr></thead>
       <tbody>%s</tbody></table></div>
     <p class="note">Attribution is neighbourhood evidence, not the verdict
-    itself. It tells a buyer which supplier the material resembles, which is
-    what a seller will be asked about.</p>""" % rows
+    itself. It tells a buyer which supplier the material resembles &mdash;
+    which is the question a seller will be asked to answer.</p>""" % (
+        ("%d asset%s sit nearest a generator rather than the human set."
+         % (generators, "" if generators == 1 else "s")) if generators
+        else "No asset sits nearest a generator population.",
+        rows)
 
 
 def _industry_label_section(assets) -> str:

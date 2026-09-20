@@ -57,6 +57,9 @@ class TrackScore:
     industry_label_basis: list = field(default_factory=list)
 
     risk_timeline: list = field(default_factory=list)
+    # [{"start": s, "end": s, "risk": 0-1}] -- carries real timestamps, so a
+    # reviewer is told where to listen rather than which window index to count.
+    risk_segments: list = field(default_factory=list)
     model_version: str = ""
 
     # True when the response came from HumanStandard's ?mock= fixtures. The
@@ -80,13 +83,21 @@ class TrackScore:
         return len(set(values)) > 1
 
     @property
-    def peak_risk_window(self) -> tuple:
-        """(index, risk) of the most AI-looking window, for reviewer context."""
-        if not self.risk_timeline:
-            return (-1, 0.0)
-        best = max(range(len(self.risk_timeline)),
-                   key=lambda i: self.risk_timeline[i])
-        return (best, self.risk_timeline[best])
+    def peak_risk(self) -> tuple:
+        """(start_seconds, risk) of the most AI-looking passage.
+
+        Prefers the segment list, which carries real timestamps. Falls back to
+        the flat timeline's ~2.5s windows when that is all there is.
+        """
+        if self.risk_segments:
+            best = max(self.risk_segments,
+                       key=lambda seg: seg.get("risk", 0.0))
+            return (float(best.get("start", 0.0)), float(best.get("risk", 0.0)))
+        if self.risk_timeline:
+            idx = max(range(len(self.risk_timeline)),
+                      key=lambda i: self.risk_timeline[i])
+            return (idx * 2.5, self.risk_timeline[idx])
+        return (-1.0, 0.0)
 
 
 @dataclass

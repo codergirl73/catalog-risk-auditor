@@ -319,3 +319,51 @@ class TestLiveResponseShapes(unittest.TestCase):
     def test_every_live_fixture_is_flagged_as_mock(self):
         for payload in (self.HUMAN, self.AI, self.SUSPICIOUS):
             self.assertTrue(parse_result(payload)["mock"])
+
+
+class TestRiskSegments(unittest.TestCase):
+    """The live API sends risk_segments_full_mix, not risk_timeline."""
+
+    LIVE = {"verdict": "human", "confidence": 0.9914, "ai_probability": 0.0086,
+            "origin": "human", "origin_confidence": 0.6,
+            "risk_segments_full_mix": [
+                {"start": 0.0, "end": 20.0, "risk": 0.0},
+                {"start": 20.0, "end": 22.5, "risk": 0.4671},
+                {"start": 22.5, "end": 31.25, "risk": 0.0}],
+            "risk_segments_vocal": [], "risk_segments_instrumental": [],
+            "tier_verdicts": {"press_safe": "human", "human_safe": "human",
+                              "recall": "human"},
+            "model_version": "hsv-1.3.1"}
+
+    def test_full_mix_segments_are_read(self):
+        got = parse_result(self.LIVE)
+        self.assertEqual(len(got["risk_segments"]), 3)
+        self.assertAlmostEqual(got["risk_segments"][1]["start"], 20.0)
+
+    def test_timeline_is_derived_when_absent(self):
+        self.assertEqual(len(parse_result(self.LIVE)["risk_timeline"]), 3)
+
+    def test_empty_stem_lists_are_not_preferred_over_the_full_mix(self):
+        self.assertEqual(len(parse_result(self.LIVE)["risk_segments"]), 3)
+
+    def test_peak_uses_real_timestamps(self):
+        from catalog_audit.models import TrackScore
+        sc = TrackScore("x", "x", 0.9, 0.99, "hs", **parse_result(self.LIVE))
+        at, risk = sc.peak_risk
+        self.assertAlmostEqual(at, 20.0)
+        self.assertAlmostEqual(risk, 0.4671)
+
+    def test_real_tier_verdicts_drive_tiering(self):
+        from catalog_audit.models import TrackScore
+        from catalog_audit.tiering import classify
+        from catalog_audit.models import Tier
+        sc = TrackScore("x", "x", 0.9, 0.99, "hs", **parse_result(self.LIVE))
+        tier, why = classify(sc)
+        self.assertEqual(tier, Tier.CLEAN)
+        self.assertIn("every operating point", why)
+
+    def test_human_origin_is_not_reported_as_an_attribution(self):
+        from catalog_audit.models import TrackScore
+        from catalog_audit.tiering import _evidence
+        sc = TrackScore("x", "x", 0.9, 0.99, "hs", **parse_result(self.LIVE))
+        self.assertNotIn("Attributed to Human", _evidence(sc))
