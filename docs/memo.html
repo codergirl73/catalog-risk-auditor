@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- The memo embeds values that arrived from a detection API and is opened in
+     a browser by whoever is least equipped to notice if one of them is
+     hostile. Nothing here needs to execute, load, or phone home, so nothing
+     is permitted to: no scripts at all, styles inline only, images and
+     frames blocked, and no form may submit anywhere. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; img-src data:;
+               form-action 'none'; base-uri 'none'; frame-ancestors 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Acquisition risk memo &mdash; Meridian Sound Library</title>
+<style>
+:root{--paper:#f1f3f6;--surface:#fff;--ink:#14181f;--ink2:#3e4854;--muted:#6b7683;
+--line:#d5dce4;--soft:#e8edf2;--accent:#9c5d0c;
+/* Risk scale. Validated for deuteranopia/protanopia separation: the
+   conventional green/amber/red reads as one colour to a red-green
+   colourblind buyer, which is unusable in a document whose entire job is
+   ranking risk. Blue/amber/red separates at every CVD type, and every
+   segment is labelled so colour is never the only signal. */
+--ok:#2f6fb0;--hold:#8a6000;--risk:#a32b22;
+--ok-fill:#2f6fb0;--hold-fill:#c58a00;--risk-fill:#a32b22}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);padding:40px 16px;
+font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+.sheet{max-width:860px;margin:0 auto;background:var(--surface);
+border:1px solid var(--line);padding:48px 52px}
+.eyebrow{font:11px ui-monospace,Menlo,monospace;letter-spacing:.14em;
+text-transform:uppercase;color:var(--accent);margin:0 0 10px}
+h1{font-size:28px;letter-spacing:-.02em;margin:0 0 6px}
+.sub{color:var(--muted);margin:0 0 26px;font-size:14px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);
+margin:34px 0 10px;border-bottom:1px solid var(--line);padding-bottom:6px}
+.head{border:2px solid var(--risk);padding:20px 22px;margin:22px 0}
+.head .n{font-size:32px;font-weight:700;letter-spacing:-.02em;
+font-variant-numeric:tabular-nums;color:var(--risk);margin:0 0 6px}
+.head p{margin:0;font-size:14.5px;color:var(--ink2)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:0}
+.kv div{padding:8px 0;border-bottom:1px dotted var(--line);font-size:14.5px}
+.kv .v{text-align:right;font-family:ui-monospace,Menlo,monospace;
+font-variant-numeric:tabular-nums;font-weight:500}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;
+color:var(--muted);padding:7px 8px;border-bottom:1px solid var(--line)}
+td{padding:6px 8px;border-bottom:1px solid var(--soft);
+font-variant-numeric:tabular-nums}
+td.n{text-align:right}
+.pill{display:inline-block;font-size:11px;padding:1px 7px;border-radius:2px;
+text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.pill.clean{background:#e3edf8;color:var(--ok)}
+.pill.contested{background:#f7eed6;color:var(--hold)}
+.pill.suspect{background:#f9e5e3;color:var(--risk)}
+.pill.error{background:#eceff3;color:var(--muted)}
+.banner{background:#f9e6e3;border:2px solid var(--risk);padding:14px 16px;
+margin-bottom:24px;font-size:14px;color:var(--risk);font-weight:600}
+.note{font-size:13px;color:var(--muted);margin-top:14px;font-style:italic}
+.foot{margin-top:38px;padding-top:16px;border-top:1px solid var(--line);
+font-size:12px;color:var(--muted);line-height:1.7}
+.wrapt{overflow-x:auto}
+figure{margin:18px 0 0}
+figcaption{font-size:13px;color:var(--ink2);margin-bottom:12px}
+.chart{width:100%;height:auto;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:10px;font-size:12px;
+color:var(--ink2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.ev{font-size:12px;color:var(--muted);word-break:break-all}
+.tag{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:2px;
+background:var(--soft);color:var(--ink2);letter-spacing:.03em}
+@media print{body{padding:0;background:#fff}.sheet{border:0;padding:0;max-width:none}}
+</style></head>
+<body><div class="sheet">
+
+<p class="eyebrow">Acquisition risk memo</p>
+<h1>Meridian Sound Library</h1>
+<p class="sub">Prepared for the acquiring party &middot; 16 assets
+reviewed</p>
+
+<div class="head">
+  <p class="n">$171,710</p>
+  <p>6 of 16 tracks (37.5%) are suspect, carrying $8,365 of $48,000 annual revenue (17.4%). Recommended escrow $171,710 against an asking price of $720,000.</p>
+</div>
+
+<h2>Where the risk sits</h2>
+
+    <figure>
+      <figcaption>Suspect assets are typically a large share of a catalog by
+      count and a small share of it by revenue. Only the second number affects
+      what the catalog is worth.</figcaption>
+      <svg class="chart" viewBox="0 0 720 132" role="img"
+           aria-label="Catalog composition by track count and by revenue">
+        <text x="0" y="12.0" fill="#3e4854" font-size="12.5" font-weight="600" font-family="-apple-system,Helvetica,Arial,sans-serif">By track count &#8212; 16 assets</text>
+        <clipPath id="clip20"><rect x="0" y="20.0" width="720.0" height="30.0" rx="4"/></clipPath><g clip-path="url(#clip20)"><rect x="0.0" y="20.0" width="360.0" height="30.0" fill="#2f6fb0"><title>clean: 8 (50.0%)</title></rect><text x="180.0" y="39.0" fill="#fff" font-size="12" font-weight="600" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">50%</text><rect x="362.0" y="20.0" width="90.0" height="30.0" fill="#c58a00"><title>contested: 2 (12.5%)</title></rect><text x="407.0" y="39.0" fill="#fff" font-size="12" font-weight="600" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">12%</text><rect x="454.0" y="20.0" width="270.0" height="30.0" fill="#a32b22"><title>suspect: 6 (37.5%)</title></rect><text x="589.0" y="39.0" fill="#fff" font-size="12" font-weight="600" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">38%</text></g>
+        <text x="0" y="88.0" fill="#3e4854" font-size="12.5" font-weight="600" font-family="-apple-system,Helvetica,Arial,sans-serif">By annual revenue &#8212; $48,000</text>
+        <clipPath id="clip96"><rect x="0" y="96.0" width="720.0" height="30.0" rx="4"/></clipPath><g clip-path="url(#clip96)"><rect x="0.0" y="96.0" width="502.0" height="30.0" fill="#2f6fb0"><title>clean: $33,470 (69.7%)</title></rect><text x="251.0" y="115.0" fill="#fff" font-size="12" font-weight="600" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">70%</text><rect x="504.0" y="96.0" width="92.5" height="30.0" fill="#c58a00"><title>contested: $6,166 (12.8%)</title></rect><text x="550.3" y="115.0" fill="#fff" font-size="12" font-weight="600" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">13%</text><rect x="598.5" y="96.0" width="125.5" height="30.0" fill="#a32b22"><title>suspect: $8,365 (17.4%)</title></rect><text x="661.3" y="115.0" fill="#fff" font-size="12" font-weight="600" text-anchor="middle" font-family="ui-monospace,Menlo,monospace">17%</text></g>
+      </svg>
+      <div class="legend"><span><i style="background:#2f6fb0"></i>Clean</span><span><i style="background:#c58a00"></i>Contested</span><span><i style="background:#a32b22"></i>Suspect</span></div>
+    </figure>
+
+<h2>Position</h2>
+<div class="kv">
+  <div>Tracks in catalog</div><div class="v">16</div>
+  <div>Reported annual royalties</div><div class="v">$48,000</div>
+  <div>Acquisition multiple</div><div class="v">15.0&times;</div>
+  <div>Asking price</div><div class="v">$720,000</div>
+  <div>Clean</div><div class="v">8</div>
+  <div>Contested &mdash; human review</div><div class="v">2</div>
+  <div>Suspect</div><div class="v">6</div>
+  <div>Detection failed</div><div class="v">0</div>
+  <div>Revenue on suspect assets</div>
+  <div class="v">$8,365 (17.4%)</div>
+  <div>Revenue on contested assets</div>
+  <div class="v">$6,166 (12.8%)</div>
+  <div>Recommended escrow</div><div class="v">$171,710</div>
+</div>
+<p class="note">Suspect revenue of $8,365 held in full plus 50% of contested revenue of $6,166, capitalised at the 15.0x acquisition multiple.</p>
+
+<h2>Assets by revenue</h2>
+<div class="wrapt"><table>
+  <thead><tr><th>Title</th><th>Artist</th><th class="n">AI score</th>
+  <th class="n">Annual</th><th>Tier</th></tr></thead>
+  <tbody><tr><td>Sleigh Ride</td><td>Kamakaze Kitten</td><td class='n'>1</td><td class='n'>$12,175</td><td><span class="pill clean">clean</span> </td></tr><tr><td>Pour Quoi Royale</td><td>Zipp</td><td class='n'>0</td><td class='n'>$5,013</td><td><span class="pill clean">clean</span> </td></tr><tr><td>sonics__fake_00105_suno_1</td><td>Generated</td><td class='n'>100</td><td class='n'>$4,974</td><td><span class="pill suspect">suspect</span> <span class="tag">Suno</span></td></tr><tr><td>Sleigh Ride</td><td>Bubblyfish</td><td class='n'>2</td><td class='n'>$4,820</td><td><span class="pill clean">clean</span> </td></tr><tr><td>Reading 2 Volume 3</td><td>Lemoness</td><td class='n'>5</td><td class='n'>$3,551</td><td><span class="pill contested">contested</span> </td></tr><tr><td>Footloose (feat. Paul Whiteman)</td><td>Dog On Springs</td><td class='n'>0</td><td class='n'>$3,074</td><td><span class="pill clean">clean</span> </td></tr><tr><td>01_hiliv003_onsundaysidream_hypnagogic</td><td>mccandless</td><td class='n'>1</td><td class='n'>$2,727</td><td><span class="pill clean">clean</span> </td></tr><tr><td>Aydio_-_01_-_Track</td><td>Aydio</td><td class='n'>5</td><td class='n'>$2,614</td><td><span class="pill contested">contested</span> </td></tr><tr><td>Dance With The Democrat</td><td>Boogie Belgique</td><td class='n'>0</td><td class='n'>$2,105</td><td><span class="pill clean">clean</span> </td></tr><tr><td>The Night Before Bit Mess</td><td>c-c</td><td class='n'>0</td><td class='n'>$1,866</td><td><span class="pill clean">clean</span> </td></tr><tr><td>sonics__fake_00214_udio_0</td><td>Generated</td><td class='n'>100</td><td class='n'>$1,698</td><td><span class="pill suspect">suspect</span> </td></tr><tr><td>Animosity</td><td>Intoxicated Piano</td><td class='n'>0</td><td class='n'>$1,690</td><td><span class="pill clean">clean</span> </td></tr><tr><td>sonics__fake_00001_suno_0</td><td>Generated</td><td class='n'>100</td><td class='n'>$517</td><td><span class="pill suspect">suspect</span> </td></tr><tr><td>sonics__fake_00524_udio_1</td><td>Generated</td><td class='n'>71</td><td class='n'>$484</td><td><span class="pill suspect">suspect</span> </td></tr><tr><td>sonics__fake_00416_udio_1</td><td>Generated</td><td class='n'>100</td><td class='n'>$357</td><td><span class="pill suspect">suspect</span> </td></tr><tr><td>sonics__fake_00327_udio_0</td><td>Generated</td><td class='n'>100</td><td class='n'>$335</td><td><span class="pill suspect">suspect</span> </td></tr></tbody></table></div>
+
+
+
+    <h2>Human review queue &mdash; 2 assets</h2>
+    <p>These could not be settled from audio alone. They are excluded from the
+    clean base and only partially weighted in the escrow figure, and they are
+    listed by what they earn so a reviewer with limited time starts where the
+    money is.</p>
+    <div class="wrapt"><table>
+      <thead><tr><th>Asset</th><th class="n">Score</th>
+      <th class="n">Annual</th><th>Why</th></tr></thead>
+      <tbody><tr><td>2014-02-12Bigwords__Reading2Volume3.mp3</td><td class='n'>5</td><td class='n'>$3,551</td><td>Split verdict — press-safe human, human-safe human, recall ai. Borderline by the detector&#x27;s own account. Risk peaks at 100% from 0:20. <a class="ev" rel="noopener noreferrer nofollow" href="https://firebasestorage.googleapis.com/v0/b/hsvr-51d2b.firebasestorage.app/o/origin_maps%2F322d25fd994d8b1b6371fc89d78f06858d0e7327da3f11eb31630dfbeaf663ce.png?alt=media&amp;token=1fe82a41-bdc5-4b9b-9a10-636f92792475">similarity map</a></td></tr><tr><td>DWK031__Aydio_-_01_-_Track_64kb.mp3</td><td class='n'>5</td><td class='n'>$2,614</td><td>Split verdict — press-safe human, human-safe human, recall ai. Borderline by the detector&#x27;s own account. Risk peaks at 68% from 0:33. <a class="ev" rel="noopener noreferrer nofollow" href="https://firebasestorage.googleapis.com/v0/b/hsvr-51d2b.firebasestorage.app/o/origin_maps%2F730e16027dc3691e9610a9f431faa3ddaf4dd50902e689dd255962849445f6d7.png?alt=media&amp;token=1edfdb5a-5a00-4257-b8b5-56cc5f766807">similarity map</a></td></tr></tbody></table></div>
+
+    <h2>Audit accuracy against ground truth</h2>
+    <p>Against 16 labelled tracks: 6 of 6 planted AI tracks were caught, 0 missed, and 0 landed in the contested band. No human track was wrongly flagged as suspect. Precision 1.00. Recall 1.00. Of 6 correctly flagged AI tracks whose true generator is known, 1 was attributed to the right one, 5 carried no attribution. Only 6 AI tracks were planted, so these are counts rather than measured rates — the confidence interval on a sample this size is wide enough that the figures should be read as indicative.</p>
+    <div class="kv">
+      <div>Labelled assets</div><div class="v">16</div>
+      <div>Correctly flagged AI</div><div class="v">6</div>
+      <div>Missed AI</div><div class="v">0</div>
+      <div>Human tracks wrongly flagged</div><div class="v">0</div>
+      <div>Sent to human review instead of guessing</div><div class="v">2</div>
+      <div>Precision</div><div class="v">1.00</div>
+      <div>Recall</div><div class="v">1.00</div>
+    </div>
+    
+        <h2>Attribution accuracy</h2>
+        <p>Knowing a recording is synthetic is one claim. Knowing which model
+        made it is a second, harder one, and it is the claim a seller will be
+        asked to answer. Scored only on assets correctly identified as AI
+        whose true generator is recorded.</p>
+        <div class="kv">
+          <div>Caught AI assets with a known generator</div><div class="v">6</div>
+          <div>Attributed to the correct generator</div><div class="v">1</div>
+          <div>Attributed to the wrong generator</div><div class="v">0</div>
+          <div>Attribution declined by the detector</div><div class="v">5</div>
+        </div>
+        <p class="note">A declined attribution is counted separately from a
+        wrong one. The detector saying "I cannot place this" is the behaviour
+        this audit is built to reward, not an error to be penalised.</p>
+    <p class="note">This catalog was constructed with known labels so the error
+    rate could be measured. A real acquisition has no answer key, which is why
+    the contested band exists.</p>
+
+    <h2>Industry labelling exposure</h2>
+    <p>In July 2026 IFPI, RIAA, A2IM, WIN and IMPALA adopted a unified
+    track-level standard distinguishing <strong>AI-Generated</strong> from
+    AI-Assisted recordings. HumanStandard reports each verdict against those
+    definitions, so this is the label the catalog would carry on a platform
+    that adopts the standard &mdash; not a private score.</p>
+    <div class="kv">
+      <div>Meets the AI-Generated definition</div><div class="v">5</div>
+      <div>Revenue on those assets</div><div class="v">$7,880</div>
+      <div>Suspected, stem verification recommended</div><div class="v">0</div>
+      <div>Revenue on those assets</div><div class="v">$0</div>
+    </div>
+    <p class="note">The labelling programme is voluntary and self-declared.
+    A seller who has not declared these is not necessarily concealing them,
+    but the buyer inherits the declaration either way.</p>
+
+    <h2>Attribution</h2>
+    <p>HumanStandard places every recording against reference populations
+    &mdash; verified human music, and the known generators (Suno, Udio,
+    ElevenLabs, Lyria, Treblo). Where a track sits clearly inside one of
+    those populations, it is named. 1 asset sit nearest a generator rather than the human set.</p>
+    <div class="wrapt"><table>
+      <thead><tr><th>Nearest population</th><th class="n">Tracks</th>
+      <th class="n">Annual</th><th>Basis</th></tr></thead>
+      <tbody><tr><td>Suno</td><td class='n'>1</td><td class='n'>$4,974</td><td>23 of its 25 nearest reference recordings are Suno generations.</td></tr><tr><td>Verified human recordings</td><td class='n'>11</td><td class='n'>$40,120</td><td>24 of its 25 nearest reference recordings are verified human recordings.</td></tr></tbody></table></div>
+    <p class="note">Attribution is neighbourhood evidence, not the verdict
+    itself. It tells a buyer which supplier the material resembles &mdash;
+    which is the question a seller will be asked to answer.</p>
+
+<h2>Method</h2>
+<p>Every asset was submitted to the HumanStandard detection API, which returns
+a three-valued verdict &mdash; AI, human, or uncertain &mdash; at three
+calibrated operating points with their false-positive rates published.
+Assets are tiered on those operating points rather than on thresholds chosen
+here: suspect when HumanStandard&#x27;s human-safe tier (~1-2% FPR) says ai | clean when its recall tier (~5-10% FPR) says human | contested when the tiers disagree. Where the operating points disagree, the recording is
+borderline by the detector's own account and is routed to a person. Anything
+below the detector's confidence floor is routed to review regardless of
+verdict, and anything that could not be scored is excluded from the clean base
+rather than assumed safe. Suspect revenue is escrowed in full; contested
+revenue is weighted at 50% because uncertainty is not a
+finding.</p>
+
+<div class="foot">
+  Generated 2026-09-20 18:22 UTC &middot; detector: humanstandard &middot; evidence
+  manifest b6b0d3a6913153e5742c927fd81f6944<br>
+  This memo is an audio-authenticity assessment, not a legal opinion or a
+  valuation. Copyright enforceability of AI-generated works is a question for
+  counsel.
+</div>
+</div></body></html>
