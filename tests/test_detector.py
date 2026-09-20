@@ -261,3 +261,61 @@ class TestUrls(unittest.TestCase):
             self.assertIn("mock=suspicious", det._query())
         finally:
             config.HS_MOCK_SCENARIO = original
+
+
+class TestLiveResponseShapes(unittest.TestCase):
+    """Captured from the live API, which differs from the published docs."""
+
+    HUMAN = {"verdict": "human", "confidence": 0.9841, "ai_probability": 0.0159,
+             "origin": None, "origin_confidence": None, "duration_sec": 213.44,
+             "model_version": "hsv-1.3.0", "risk_timeline": [0.02, 0.01],
+             "mock": True, "mock_scenario": "human"}
+
+    AI = {"verdict": "ai", "confidence": 0.9816, "ai_probability": 0.9816,
+          "origin": "suno", "origin_confidence": 0.87,
+          "industry_label": "ai_generated",
+          "industry_label_status": "meets_definition",
+          "industry_label_basis": ["Full-mix certification threshold cleared"],
+          "risk_timeline": [0.94, 0.97], "mock": True, "mock_scenario": "ai"}
+
+    SUSPICIOUS = {"verdict": "suspicious", "confidence": 0.612,
+                  "ai_probability": 0.612, "origin": None,
+                  "industry_label": "ai_generated",
+                  "industry_label_status": "suspected",
+                  "industry_label_basis": ["Screening threshold cleared; "
+                                           "certification threshold not cleared"],
+                  "mock": True, "mock_scenario": "suspicious"}
+
+    def test_ai_probability_drives_the_score(self):
+        self.assertAlmostEqual(map_response(self.HUMAN)[0], 1.6, places=1)
+        self.assertAlmostEqual(map_response(self.AI)[0], 98.2, places=1)
+        self.assertAlmostEqual(map_response(self.SUSPICIOUS)[0], 61.2, places=1)
+
+    def test_ai_probability_is_preferred_over_verdict_reconstruction(self):
+        # verdict+confidence would give 50 + 0.9816*50 = 99.1; the direct
+        # probability is 98.2 and is the number to trust.
+        self.assertAlmostEqual(map_response(self.AI)[0], 98.2, places=1)
+
+    def test_suspicious_verdict_is_handled(self):
+        ai, conf = map_response(self.SUSPICIOUS)
+        self.assertGreater(ai, config.CLEAN_CEILING)
+        self.assertAlmostEqual(conf, 0.612)
+
+    def test_snake_case_industry_label_is_normalised_for_display(self):
+        self.assertEqual(parse_result(self.AI)["industry_label"],
+                         "AI-Generated")
+
+    def test_label_basis_array_is_captured(self):
+        got = parse_result(self.SUSPICIOUS)["industry_label_basis"]
+        self.assertEqual(len(got), 1)
+        self.assertIn("Screening threshold", got[0])
+
+    def test_null_origin_does_not_crash(self):
+        self.assertEqual(parse_result(self.HUMAN)["origin"], "")
+
+    def test_missing_tier_verdicts_is_not_an_error(self):
+        self.assertEqual(parse_result(self.AI)["tier_verdicts"], {})
+
+    def test_every_live_fixture_is_flagged_as_mock(self):
+        for payload in (self.HUMAN, self.AI, self.SUSPICIOUS):
+            self.assertTrue(parse_result(payload)["mock"])

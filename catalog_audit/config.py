@@ -84,6 +84,15 @@ HS_MAX_UPLOAD_MB = _f("HS_MAX_UPLOAD_MB", 20.0)
 # real API becomes a config change rather than a code change.
 #   bearer | x-api-key | api-key | authorization-raw | both
 HS_AUTH_STYLE = os.environ.get("HS_AUTH_STYLE", "bearer").strip().lower()
+
+# The API sits behind Cloudflare, which answers "error code: 1010" -- a 403 on
+# the client signature -- to urllib's default Python-urllib/3.x agent. That
+# reads exactly like a rejected key and is not one. Identify the client
+# properly and it passes.
+HS_USER_AGENT = os.environ.get(
+    "HS_USER_AGENT",
+    "catalog-risk-auditor/%s (+https://github.com/codergirl73/"
+    "catalog-risk-auditor)" % __import__("catalog_audit").__version__)
 HS_FILE_FIELD = os.environ.get("HS_FILE_FIELD", "file").strip() or "file"
 
 CACHE_DIR = Path(os.environ.get("HS_CACHE_DIR", str(ROOT / ".cache")))

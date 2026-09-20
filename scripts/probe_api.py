@@ -68,7 +68,7 @@ def check_key() -> bool:
     req = urllib.request.Request(
         config.HS_API_BASE + config.HS_DETECT_PATH + det._query({"mock": "ai"}),
         data=b"", method="POST")
-    for k, v in det.auth_headers().items():
+    for k, v in det.base_headers().items():
         req.add_header(k, v)
 
     try:
@@ -82,6 +82,11 @@ def check_key() -> bool:
         print("       Check HS_API_BASE in .env.")
         return False
 
+    if code == 403 and "1010" in body:
+        print(BAD + "403 error code 1010 -- Cloudflare rejected the client "
+                    "signature, not the key.")
+        print("       Set HS_USER_AGENT in .env to any real identifier.")
+        return False
     if code in (401, 403):
         print(BAD + "%s -- the key was rejected: %s" % (code, _short(body)))
         print("       Check the key, and that HS_AUTH_STYLE is 'bearer'.")

@@ -161,3 +161,65 @@ class TestReviewerEvidence(unittest.TestCase):
         _, why = classify(tiered("uncertain", "human", "ai",
                                  risk_timeline=[0.1, 0.2, 0.15]))
         self.assertNotIn("Risk peaks", why)
+
+
+def verdicted(verdict, confidence=0.95, **kw):
+    """A score shaped like a real live response: verdict, no tier_verdicts."""
+    base = dict(filename="t.mp3", path="t.mp3", ai_score=50.0,
+                confidence=confidence, provider="humanstandard",
+                verdict=verdict)
+    base.update(kw)
+    return TrackScore(**base)
+
+
+class TestVerdictPath(unittest.TestCase):
+    """The path that actually runs: live responses carry no tier_verdicts."""
+
+    def test_ai_verdict_is_suspect(self):
+        tier, why = classify(verdicted("ai"))
+        self.assertEqual(tier, Tier.SUSPECT)
+        self.assertIn("verdict of AI", why)
+
+    def test_human_verdict_is_clean(self):
+        tier, _ = classify(verdicted("human"))
+        self.assertEqual(tier, Tier.CLEAN)
+
+    def test_suspicious_is_contested(self):
+        # "suspicious" is a real value the published docs do not list.
+        tier, why = classify(verdicted("suspicious", confidence=0.61))
+        self.assertEqual(tier, Tier.CONTESTED)
+        self.assertIn("declines to call", why)
+
+    def test_uncertain_is_contested(self):
+        tier, _ = classify(verdicted("uncertain", confidence=0.6))
+        self.assertEqual(tier, Tier.CONTESTED)
+
+    def test_ai_but_only_suspected_is_contested_not_suspect(self):
+        # Certification declined means suspected, not established. Pricing a
+        # track as unownable on a suspicion is the expensive mistake.
+        tier, why = classify(verdicted("ai", industry_label_status="suspected"))
+        self.assertEqual(tier, Tier.CONTESTED)
+        self.assertIn("certification declined", why.lower())
+
+    def test_low_confidence_human_is_not_counted_clean(self):
+        tier, why = classify(verdicted("human", confidence=0.3))
+        self.assertEqual(tier, Tier.CONTESTED)
+        self.assertIn("floor", why)
+
+    def test_an_unknown_verdict_is_never_clean(self):
+        tier, why = classify(verdicted("banana"))
+        self.assertEqual(tier, Tier.CONTESTED)
+        self.assertIn("Not assumed clean", why)
+
+    def test_tier_verdicts_take_precedence_over_verdict(self):
+        s = verdicted("human", tier_verdicts={"press_safe": "ai",
+                                              "human_safe": "ai",
+                                              "recall": "ai"})
+        self.assertEqual(classify(s)[0], Tier.SUSPECT)
+
+    def test_label_basis_reaches_the_reason(self):
+        _, why = classify(verdicted(
+            "suspicious", confidence=0.61,
+            industry_label_basis=["Screening threshold cleared; "
+                                  "certification threshold not cleared"]))
+        self.assertIn("Screening threshold cleared", why)

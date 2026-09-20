@@ -76,12 +76,29 @@ def map_response(payload: dict) -> tuple:
         if isinstance(inner, dict):
             flat.update(inner)
 
-    # The documented HumanStandard shape: a three-valued verdict plus a
-    # confidence in it. Everything below this is fallback for a schema we did
-    # not anticipate.
+    # Observed against the live API: `ai_probability` is present on every
+    # response and is already the thing this tool wants -- a direct 0-1
+    # likelihood, monotone, and not conditioned on which verdict was reached.
+    # Prefer it over reconstructing a score from verdict plus confidence,
+    # which is the same number viewed through a decision.
+    prob = flat.get("ai_probability")
+    if isinstance(prob, (int, float)) and not isinstance(prob, bool):
+        p_val = float(prob)
+        if p_val <= 1.0:
+            p_val *= 100.0
+        conf = flat.get("confidence")
+        conf = (float(conf) if isinstance(conf, (int, float))
+                and not isinstance(conf, bool) else 0.8)
+        if conf > 1.0:
+            conf /= 100.0
+        return (round(max(0.0, min(100.0, p_val)), 1),
+                round(max(0.0, min(1.0, conf)), 3))
+
+    # Otherwise reconstruct from the verdict. "suspicious" is a real value the
+    # published docs do not list, alongside ai / human / uncertain.
     verdict = str(flat.get("verdict") or "").strip().lower()
     raw_conf = flat.get("confidence")
-    if verdict in ("ai", "human", "uncertain") and isinstance(
+    if verdict in ("ai", "human", "uncertain", "suspicious") and isinstance(
             raw_conf, (int, float)) and not isinstance(raw_conf, bool):
         c = float(raw_conf)
         if c > 1.0:
@@ -98,6 +115,7 @@ def map_response(payload: dict) -> tuple:
         else:
             score = 50.0
         return round(score, 1), round(c, 3)
+
 
     ai_score: Optional[float] = None
     for key in _AI_KEYS:
@@ -184,6 +202,21 @@ def parse_result(payload: dict) -> dict:
     origin_map = payload.get("origin_map")
     origin_map = origin_map if isinstance(origin_map, dict) else {}
 
+    # The live API returns "ai_generated"; the docs print "AI-Generated".
+    # Normalise for display so the memo does not show a wire value.
+    label = _s("industry_label")
+    if label:
+        label = {"ai_generated": "AI-Generated",
+                 "ai_assisted": "AI-Assisted"}.get(label.strip().lower(), label)
+
+    # industry_label_basis is an array of plain-language reasons, and is not
+    # in the published response table at all. It is the best short evidence
+    # line the API produces, so it is kept.
+    basis = payload.get("industry_label_basis")
+    if isinstance(basis, str):
+        basis = [basis]
+    basis = [str(b) for b in basis] if isinstance(basis, list) else []
+
     return {
         "verdict": _s("verdict").lower(),
         "tier_verdicts": tiers,
@@ -192,8 +225,9 @@ def parse_result(payload: dict) -> dict:
         "origin_summary": str(origin_map.get("summary_line") or ""),
         "origin_map_evidence": _s("origin_map_evidence"),
         "headline_verdict": _s("headline_verdict").lower(),
-        "industry_label": _s("industry_label"),
+        "industry_label": label,
         "industry_label_status": _s("industry_label_status").lower(),
+        "industry_label_basis": basis,
         "risk_timeline": timeline,
         "duration_s": _f("duration_sec"),
         "model_version": _s("model_version"),
@@ -309,6 +343,21 @@ class LiveDetector:
 
     # -- transport ---------------------------------------------------------
     @staticmethod
+    def base_headers() -> dict:
+        """Headers every request carries, auth included.
+
+        The User-Agent is not decoration. Cloudflare sits in front of the API
+        and rejects urllib's default agent with a 403 and "error code: 1010",
+        which is indistinguishable from a bad key until you read the body.
+        """
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": config.HS_USER_AGENT,
+        }
+        headers.update(LiveDetector.auth_headers())
+        return headers
+
+    @staticmethod
     def auth_headers() -> dict:
         """Present the key the way HS_AUTH_STYLE says to.
 
@@ -356,9 +405,8 @@ class LiveDetector:
         req = urllib.request.Request(url, data=body, method="POST")
         req.add_header("Content-Type",
                        "multipart/form-data; boundary=%s" % boundary)
-        for name, value in self.auth_headers().items():
+        for name, value in self.base_headers().items():
             req.add_header(name, value)
-        req.add_header("Accept", "application/json")
         return req
 
     def _status_request(self, job_id: str) -> urllib.request.Request:
@@ -366,9 +414,8 @@ class LiveDetector:
             "{job_id}", urllib.parse.quote(str(job_id), safe=""))
         req = urllib.request.Request(
             config.HS_API_BASE + path + self._query(), method="GET")
-        for name, value in self.auth_headers().items():
+        for name, value in self.base_headers().items():
             req.add_header(name, value)
-        req.add_header("Accept", "application/json")
         return req
 
     def _throttle(self) -> None:

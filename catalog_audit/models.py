@@ -54,6 +54,7 @@ class TrackScore:
     headline_verdict: str = ""     # ai_generated | ai_generated_suspected | human
     industry_label: str = ""       # "AI-Generated" when it meets the definition
     industry_label_status: str = ""  # meets_definition | suspected
+    industry_label_basis: list = field(default_factory=list)
 
     risk_timeline: list = field(default_factory=list)
     model_version: str = ""

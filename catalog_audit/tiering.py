@@ -29,6 +29,8 @@ def _evidence(score: TrackScore) -> str:
     "we could not settle it" into something a person can act on.
     """
     bits = []
+    if score.industry_label_basis:
+        bits.append(score.industry_label_basis[0].rstrip(".") + ".")
     if score.origin:
         if score.origin_summary:
             bits.append("Attributed to %s: %s"
@@ -109,17 +111,86 @@ def _by_tier_verdicts(score: TrackScore) -> tuple:
     )
 
 
+def _by_verdict(score: TrackScore) -> tuple:
+    """Tier on the detector's own verdict when tier_verdicts is absent.
+
+    Observed against the live API: responses carry a verdict but not always
+    the calibrated tier block, so this is the path that usually runs. The
+    verdict is still the detector's own call, which beats re-deriving one from
+    a score and a threshold we chose.
+
+    `suspicious` is a real value the published docs do not list. It means the
+    screening threshold was cleared and the certification threshold was not --
+    which is the contested band stated in their vocabulary rather than ours.
+    """
+    verdict = score.verdict
+    evidence = _evidence(score)
+
+    if verdict == "ai" and score.industry_label_status == "suspected":
+        return (
+            Tier.CONTESTED,
+            "Verdict AI, but certification declined \u2014 suspected rather "
+            "than established. Stem-level verification recommended before "
+            "this is priced as unownable.%s" % evidence,
+        )
+
+    if verdict == "ai":
+        label = (" Meets the IFPI/RIAA %s definition." % score.industry_label
+                 if score.industry_label else "")
+        return (
+            Tier.SUSPECT,
+            "HumanStandard returns a verdict of AI at %.0f%% confidence.%s%s"
+            % (score.confidence * 100, label, evidence),
+        )
+
+    if verdict in ("suspicious", "uncertain"):
+        return (
+            Tier.CONTESTED,
+            "HumanStandard declines to call this one: verdict '%s' at %.0f%% "
+            "confidence. Screening cleared, certification did not.%s"
+            % (verdict, score.confidence * 100, evidence),
+        )
+
+    if verdict == "human":
+        if score.confidence < config.MIN_CONFIDENCE:
+            return (
+                Tier.CONTESTED,
+                "Verdict human, but only at %.0f%% confidence, below the %.0f%% "
+                "floor. Not counted as clean without a listen.%s"
+                % (score.confidence * 100, config.MIN_CONFIDENCE * 100,
+                   evidence),
+            )
+        return (
+            Tier.CLEAN,
+            "HumanStandard returns a verdict of human at %.0f%% confidence."
+            % (score.confidence * 100),
+        )
+
+    return (
+        Tier.CONTESTED,
+        "Unrecognised verdict '%s'. Not assumed clean.%s" % (verdict, evidence),
+    )
+
+
 def classify(score: TrackScore) -> tuple:
-    """Return (tier, reason). Reason is shown to the buyer, so write it plainly."""
+    """Return (tier, reason). Reason is shown to the buyer, so write it plainly.
+
+    Three paths, most authoritative first: HumanStandard's calibrated
+    operating points, then its own verdict, then a score band. Each one is
+    the detector's judgement; only the last is ours.
+    """
     if not score.ok:
         return Tier.ERROR, "Detection failed: %s" % (score.error or "unknown error")
 
-    # Preferred path: the detector's own calibrated tiers.
+    # Best: the calibrated operating points, when detail=full returns them.
     if score.tier_verdicts:
         return _by_tier_verdicts(score)
 
-    # Fallback for a response without tier_verdicts -- an older API, a
-    # detail=full request that was not honoured, or a different provider.
+    # Next: the detector's own verdict. This is the path that usually runs.
+    if score.verdict:
+        return _by_verdict(score)
+
+    # Last: score bands, for a response carrying neither.
     if score.confidence < config.MIN_CONFIDENCE:
         return (
             Tier.CONTESTED,
