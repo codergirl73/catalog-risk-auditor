@@ -77,10 +77,19 @@ def _by_tier_verdicts(score: TrackScore) -> tuple:
                      if score.industry_label_status == "meets_definition"
                      else " Suspected %s under the IFPI/RIAA standard."
                      % score.industry_label)
+        # Worth saying out loud when it happens: the headline verdict and the
+        # calibrated operating point can disagree, and a tool that read only
+        # `verdict` would pass the track into the clean base.
+        override = ""
+        if score.verdict == "human":
+            override = (" Note the headline verdict on this asset is 'human' "
+                        "at %.0f%% confidence \u2014 the operating point "
+                        "disagrees with it, and the operating point is the "
+                        "calibrated one." % (score.confidence * 100))
         return (
             Tier.SUSPECT,
             "AI at the human-safe operating point (~1-2%% false-positive "
-            "rate).%s%s" % (label, evidence),
+            "rate).%s%s%s" % (label, override, evidence),
         )
 
     if score.headline_verdict == "ai_generated_suspected":

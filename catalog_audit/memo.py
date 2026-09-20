@@ -185,6 +185,34 @@ def _exposure_chart(val) -> str:
         rev_row, legend)
 
 
+def _attribution_accuracy(ev) -> str:
+    """How well the generator attribution did, where the truth is known.
+
+    Detection and attribution are separate claims and deserve separate marks.
+    Declining to name a generator is reported as its own outcome rather than
+    folded into the errors, because a refusal is not a mistake.
+    """
+    if not ev.origin_labelled:
+        return ""
+    return """
+        <h2>Attribution accuracy</h2>
+        <p>Knowing a recording is synthetic is one claim. Knowing which model
+        made it is a second, harder one, and it is the claim a seller will be
+        asked to answer. Scored only on assets correctly identified as AI
+        whose true generator is recorded.</p>
+        <div class="kv">
+          <div>Caught AI assets with a known generator</div><div class="v">%d</div>
+          <div>Attributed to the correct generator</div><div class="v">%d</div>
+          <div>Attributed to the wrong generator</div><div class="v">%d</div>
+          <div>Attribution declined by the detector</div><div class="v">%d</div>
+        </div>
+        <p class="note">A declined attribution is counted separately from a
+        wrong one. The detector saying "I cannot place this" is the behaviour
+        this audit is built to reward, not an error to be penalised.</p>""" % (
+        ev.origin_labelled, ev.origin_correct, ev.origin_wrong,
+        ev.origin_absent)
+
+
 def _origin_section(assets) -> str:
     """Which generators the flagged material was attributed to.
 
@@ -363,6 +391,7 @@ def render(result: AuditResult, allow_mock: bool = False) -> str:
           <div>Precision</div><div class="v">%s</div>
           <div>Recall</div><div class="v">%s</div>
         </div>
+        %s
         <p class="note">This catalog was constructed with known labels so the
         error rate could be measured. A real acquisition has no answer key,
         which is why the contested band exists.</p>""" % (
@@ -371,6 +400,7 @@ def render(result: AuditResult, allow_mock: bool = False) -> str:
             ev.contested_ai + ev.contested_human,
             "%.2f" % ev.precision if ev.precision is not None else "&mdash;",
             "%.2f" % ev.recall if ev.recall is not None else "&mdash;",
+            _attribution_accuracy(ev),
         )
 
     generated = datetime.fromtimestamp(

@@ -223,3 +223,37 @@ class TestVerdictPath(unittest.TestCase):
             industry_label_basis=["Screening threshold cleared; "
                                   "certification threshold not cleared"]))
         self.assertIn("Screening threshold cleared", why)
+
+
+class TestHeadlineVersusOperatingPoint(unittest.TestCase):
+    """Observed live: a real Udio track whose headline verdict said 'human'.
+
+    Its operating points said {press_safe: human, human_safe: ai, recall: ai}.
+    Reading only `verdict` would have passed a synthetic recording into the
+    acquirable base, which is the exact failure this tool exists to prevent.
+    """
+
+    OBSERVED = dict(verdict="human", confidence=0.2939,
+                    tier_verdicts={"press_safe": "human", "human_safe": "ai",
+                                   "recall": "ai"},
+                    origin="human")
+
+    def observed(self):
+        return TrackScore(filename="udio.mp3", path="udio.mp3", ai_score=70.6,
+                          provider="humanstandard", **self.OBSERVED)
+
+    def test_the_operating_point_wins(self):
+        self.assertEqual(classify(self.observed())[0], Tier.SUSPECT)
+
+    def test_the_disagreement_is_stated_not_hidden(self):
+        _, why = classify(self.observed())
+        self.assertIn("headline verdict", why)
+        self.assertIn("human", why)
+
+    def test_agreeing_verdict_adds_no_note(self):
+        _, why = classify(TrackScore(
+            filename="a.mp3", path="a.mp3", ai_score=99.0, confidence=0.99,
+            provider="humanstandard", verdict="ai",
+            tier_verdicts={"press_safe": "ai", "human_safe": "ai",
+                           "recall": "ai"}))
+        self.assertNotIn("headline verdict", why)
