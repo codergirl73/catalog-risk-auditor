@@ -95,10 +95,16 @@ def item_tracks(identifier: str, per_item: int) -> list:
 
 
 def download(track: dict, dest_dir: Path) -> Path | None:
-    safe = "%s__%s" % (track["identifier"][:40],
-                       Path(track["name"]).name.replace("/", "_"))
-    safe = "".join(ch for ch in safe if ch.isalnum() or ch in "._-")[:120]
-    out = dest_dir / safe
+    raw = Path(track["name"]).name
+    stem, _, ext = raw.rpartition(".")
+    stem = stem or raw
+    # Truncate the stem only. Slicing the whole name can cut the extension
+    # off, and a file with no extension is invisible to the auditor's
+    # inventory -- it silently drops out of the catalog.
+    stem = "%s__%s" % (track["identifier"][:40], stem.replace("/", "_"))
+    stem = "".join(ch for ch in stem if ch.isalnum() or ch in "._-")[:110]
+    ext = "".join(ch for ch in ext if ch.isalnum())[:5].lower() or "mp3"
+    out = dest_dir / ("%s.%s" % (stem, ext))
     if out.exists() and out.stat().st_size > 0:
         return out
 

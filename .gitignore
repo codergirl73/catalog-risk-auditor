@@ -5,9 +5,10 @@
 # cached API responses (may contain full detection payloads)
 .cache/
 
-# audio and generated data
-data/catalog/
-data/*.csv
+# audio and generated data -- nothing under data/ is ever committed except
+# the placeholder that keeps the folder in the tree. Audio is large and
+# redistributing it is not ours to do; the CSVs are generated.
+data/*
 !data/.gitkeep
 
 # outputs

@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from . import config
-from .models import TrackScore
+from .models import Budget, TrackScore
 
 
 def sha256_file(path) -> str:
@@ -132,24 +132,48 @@ class LiveDetector:
     name = "humanstandard"
     is_mock = False
 
-    def __init__(self) -> None:
+    def __init__(self, budget: Optional[Budget] = None) -> None:
         config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
         self._last_call = 0.0
+        self.budget = budget
 
-    def detect(self, path) -> TrackScore:
+    def detect(self, path, digest: str = "") -> TrackScore:
         p = Path(path)
-        digest = sha256_file(p)
+        digest = digest or sha256_file(p)
+
+        def failed(msg: str) -> TrackScore:
+            return TrackScore(
+                filename=p.name, path=str(p), ai_score=-1.0, confidence=0.0,
+                provider=self.name, sha256=digest, error=msg,
+            )
 
         payload = self._read_cache(digest)
         cached = payload is not None
+        if cached and self.budget:
+            self.budget.note_cached()
+
         if payload is None:
+            oversized = self._oversized(p)
+            if oversized:
+                if self.budget:
+                    self.budget.note_skipped()
+                return failed(oversized)
+
+            # Spend before the call, not after. A request that times out may
+            # still have been charged, so the optimistic accounting is the
+            # one that overruns the budget.
+            if self.budget and not self.budget.can_spend():
+                self.budget.note_skipped()
+                return failed(
+                    "Call budget of %d exhausted. Left unscored rather than "
+                    "assumed clean." % self.budget.limit)
+            if self.budget:
+                self.budget.spend()
+
             try:
                 payload = self._call_with_retries(p)
             except Exception as exc:
-                return TrackScore(
-                    filename=p.name, path=str(p), ai_score=-1.0, confidence=0.0,
-                    provider=self.name, sha256=digest, error=str(exc),
-                )
+                return failed(str(exc))
             self._write_cache(digest, payload)
 
         try:
@@ -167,9 +191,24 @@ class LiveDetector:
             raw={"response": payload},
         )
 
+    @staticmethod
+    def _oversized(p: Path) -> str:
+        try:
+            mb = p.stat().st_size / 1e6
+        except OSError as exc:
+            return "Could not read %s: %s" % (p.name, exc)
+        if mb > config.HS_MAX_UPLOAD_MB:
+            return ("File is %.0f MB, above the %.0f MB upload ceiling. Not "
+                    "sent. Likely a mix or a set rather than a track."
+                    % (mb, config.HS_MAX_UPLOAD_MB))
+        return ""
+
     # -- cache -------------------------------------------------------------
     def _cache_file(self, digest: str) -> Path:
         return config.CACHE_DIR / (digest + ".json")
+
+    def is_cached(self, digest: str) -> bool:
+        return self._cache_file(digest).exists()
 
     def _read_cache(self, digest: str):
         f = self._cache_file(digest)
@@ -188,14 +227,36 @@ class LiveDetector:
             pass
 
     # -- transport ---------------------------------------------------------
+    @staticmethod
+    def auth_headers() -> dict:
+        """Present the key the way HS_AUTH_STYLE says to.
+
+        The default sends two headers at once, which is the right opening move
+        when the scheme is unknown but the wrong thing to leave in place: some
+        gateways reject a request carrying conflicting credentials. Once
+        scripts/probe_api.py has established which one works, set HS_AUTH_STYLE
+        in .env and only that header goes out.
+        """
+        key = config.HS_API_KEY
+        style = config.HS_AUTH_STYLE
+        if style == "bearer":
+            return {"Authorization": "Bearer " + key}
+        if style == "x-api-key":
+            return {"X-API-Key": key}
+        if style == "api-key":
+            return {"Api-Key": key}
+        if style == "authorization-raw":
+            return {"Authorization": key}
+        return {"Authorization": "Bearer " + key, "X-API-Key": key}
+
     def _build_request(self, p: Path) -> urllib.request.Request:
-        """Multipart upload. Change the field name or auth header if theirs differ."""
+        """Multipart upload. Field name and auth style both come from config."""
         boundary = uuid.uuid4().hex
         ctype = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
         body = b"".join([
             ("--%s\r\n" % boundary).encode(),
-            ('Content-Disposition: form-data; name="file"; filename="%s"\r\n'
-             % p.name).encode(),
+            ('Content-Disposition: form-data; name="%s"; filename="%s"\r\n'
+             % (config.HS_FILE_FIELD, p.name)).encode(),
             ("Content-Type: %s\r\n\r\n" % ctype).encode(),
             p.read_bytes(),
             ("\r\n--%s--\r\n" % boundary).encode(),
@@ -204,8 +265,8 @@ class LiveDetector:
             config.HS_API_BASE + config.HS_DETECT_PATH, data=body, method="POST")
         req.add_header("Content-Type",
                        "multipart/form-data; boundary=%s" % boundary)
-        req.add_header("Authorization", "Bearer " + config.HS_API_KEY)
-        req.add_header("X-API-Key", config.HS_API_KEY)
+        for name, value in self.auth_headers().items():
+            req.add_header(name, value)
         req.add_header("Accept", "application/json")
         return req
 
@@ -260,9 +321,29 @@ class MockDetector:
     name = "mock"
     is_mock = True
 
-    def detect(self, path) -> TrackScore:
+    def __init__(self, budget: Optional[Budget] = None) -> None:
+        self.budget = budget
+
+    def is_cached(self, digest: str) -> bool:
+        return False
+
+    def detect(self, path, digest: str = "") -> TrackScore:
         p = Path(path)
-        digest = sha256_file(p)
+        digest = digest or sha256_file(p)
+
+        # The mock spends the budget too. A guard that is only exercised when
+        # real money is on the line is a guard nobody has ever seen work.
+        if self.budget and not self.budget.can_spend():
+            self.budget.note_skipped()
+            return TrackScore(
+                filename=p.name, path=str(p), ai_score=-1.0, confidence=0.0,
+                provider=self.name, sha256=digest,
+                error="Call budget of %d exhausted. Left unscored rather than "
+                      "assumed clean." % self.budget.limit,
+            )
+        if self.budget:
+            self.budget.spend()
+
         bucket = int(digest[:8], 16) % 100
         # Confidence sits above the floor only so a mock run exercises all
         # three tiers and you can smoke-test the pipeline before a key
@@ -274,12 +355,12 @@ class MockDetector:
         )
 
 
-def get_detector(force_mock: bool = False):
+def get_detector(force_mock: bool = False, budget: Optional[Budget] = None):
     """Live whenever a key exists. Mock only when asked for, or when there is
     no key at all — and it is loud about it either way."""
     if force_mock or not config.HS_API_KEY:
-        return MockDetector()
-    return LiveDetector()
+        return MockDetector(budget=budget)
+    return LiveDetector(budget=budget)
 
 
 if __name__ == "__main__":

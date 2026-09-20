@@ -39,6 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--asking-price", type=float, default=None,
                    help="asking price in USD; overrides the multiple")
     p.add_argument("--name", default=None, help="catalog name for the memo")
+    p.add_argument("--budget", type=int, default=None,
+                   help="max live API calls for this run (default %d)"
+                        % config.HS_CREDIT_BUDGET)
     p.add_argument("--mock", action="store_true",
                    help="force the mock detector (development only)")
     p.add_argument("--allow-mock", action="store_true",
@@ -60,7 +63,7 @@ def main(argv=None) -> int:
         print("Not a folder: %s" % catalog, file=sys.stderr)
         return 2
 
-    agent = AuditAgent(force_mock=args.mock)
+    agent = AuditAgent(force_mock=args.mock, budget_limit=args.budget)
 
     print()
     for ev in agent.run(

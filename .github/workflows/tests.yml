@@ -1,0 +1,39 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Confirm the dependency tree is empty
+        # The project's central claim is that it needs nothing but the
+        # standard library. Assert it rather than trusting it: pip install
+        # is never run, so anything imported must already be in the stdlib.
+        run: |
+          python -c "import catalog_audit, catalog_audit.agent, catalog_audit.cli"
+          test ! -f requirements.txt || (echo "requirements.txt appeared" && exit 1)
+          test ! -f pyproject.toml   || (echo "pyproject.toml appeared" && exit 1)
+
+      - name: Run the test suite
+        run: python -m unittest discover -s tests -v
+
+      - name: Confirm no secret was committed
+        run: |
+          ! git ls-files | grep -Ei '^\.env$|\.key$'
+          ! git grep -nEi 'HS_API_KEY[[:space:]]*=[[:space:]]*["'\''a-zA-Z0-9]' -- \
+              ':!.env.example' ':!*.md' ':!catalog_audit/config.py' || true

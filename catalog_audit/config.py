@@ -41,11 +41,31 @@ def _f(name: str, default: float) -> float:
 
 # --- HumanStandard API ------------------------------------------------------
 HS_API_KEY = os.environ.get("HS_API_KEY", "").strip()
+# NB: api.hsverify.com does not resolve -- confirmed by scripts/probe_api.py.
+# The real base URL has to come from HumanStandard. Set HS_API_BASE in .env.
 HS_API_BASE = os.environ.get("HS_API_BASE", "https://api.hsverify.com").rstrip("/")
 HS_DETECT_PATH = os.environ.get("HS_DETECT_PATH", "/v1/detect")
 HS_TIMEOUT_S = _f("HS_TIMEOUT_S", 60.0)
 HS_MAX_RETRIES = int(_f("HS_MAX_RETRIES", 2))
 HS_RATE_LIMIT_S = _f("HS_RATE_LIMIT_S", 0.35)   # polite pause between calls
+
+# Hard ceiling on live detection calls for one run. The hackathon key is
+# issued with 200 credits, so an unguarded run over a large catalog could
+# spend every one of them before anybody noticed. The agent estimates its
+# spend against this before it starts and stops when it is reached.
+HS_CREDIT_BUDGET = int(_f("HS_CREDIT_BUDGET", 200))
+
+# Refuse to upload anything larger than this. A DJ set or a radio show
+# that wandered into the catalog folder would otherwise burn a credit and
+# a long timeout to tell us nothing useful.
+HS_MAX_UPLOAD_MB = _f("HS_MAX_UPLOAD_MB", 20.0)
+
+# How the key is presented and what the upload field is called. Both are
+# settable from .env so that whatever scripts/probe_api.py discovers about the
+# real API becomes a config change rather than a code change.
+#   bearer | x-api-key | api-key | authorization-raw | both
+HS_AUTH_STYLE = os.environ.get("HS_AUTH_STYLE", "both").strip().lower()
+HS_FILE_FIELD = os.environ.get("HS_FILE_FIELD", "file").strip() or "file"
 
 CACHE_DIR = Path(os.environ.get("HS_CACHE_DIR", str(ROOT / ".cache")))
 
@@ -78,4 +98,11 @@ def thresholds_summary() -> str:
         f"clean < {CLEAN_CEILING:.0f} | contested {CLEAN_CEILING:.0f}-"
         f"{SUSPECT_FLOOR:.0f} | suspect > {SUSPECT_FLOOR:.0f} | "
         f"min confidence {MIN_CONFIDENCE:.2f}"
+    )
+
+
+def budget_summary(needed: int) -> str:
+    return (
+        f"{needed} live call{'' if needed == 1 else 's'} needed, "
+        f"{HS_CREDIT_BUDGET} credit budget"
     )

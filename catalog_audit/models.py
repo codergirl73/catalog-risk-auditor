@@ -145,6 +145,7 @@ class AuditResult:
     review_queue: list = field(default_factory=list)
     provider: str = ""
     mock_mode: bool = False
+    budget: Optional[Budget] = None
     manifest_sha256: str = ""
     generated_at: float = field(default_factory=time.time)
 
@@ -154,6 +155,43 @@ class AuditResult:
             t = a.get("tier")
             a["tier"] = t.value if hasattr(t, "value") else str(t)
         return out
+
+
+@dataclass
+class Budget:
+    """A hard ceiling on live API calls, and a record of what was spent.
+
+    Detection credits are finite and a catalog is arbitrarily large, so the
+    agent is given an allowance rather than being trusted to stop on its own.
+    When the allowance runs out the remaining assets are recorded as unscored
+    -- never as clean. An asset nobody paid to check is not an asset anybody
+    verified.
+    """
+
+    limit: int
+    spent: int = 0
+    served_from_cache: int = 0
+    skipped: int = 0
+
+    @property
+    def remaining(self) -> int:
+        return max(0, self.limit - self.spent)
+
+    @property
+    def exhausted(self) -> bool:
+        return self.spent >= self.limit
+
+    def can_spend(self) -> bool:
+        return self.spent < self.limit
+
+    def spend(self) -> None:
+        self.spent += 1
+
+    def note_cached(self) -> None:
+        self.served_from_cache += 1
+
+    def note_skipped(self) -> None:
+        self.skipped += 1
 
 
 @dataclass

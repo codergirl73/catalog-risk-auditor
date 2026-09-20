@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import config, evaluation, tiering, valuation
 from .detector import get_detector, sha256_file
-from .models import Asset, AuditResult, Event, Tier
+from .models import Asset, AuditResult, Budget, Event, Tier
 
 PLAN = [
     "Inventory the catalog folder and estimate the call budget",
@@ -31,8 +31,10 @@ def _ev(type_, title="", detail="", **data) -> Event:
 
 
 class AuditAgent:
-    def __init__(self, force_mock: bool = False) -> None:
-        self.detector = get_detector(force_mock=force_mock)
+    def __init__(self, force_mock: bool = False, budget_limit: int = None) -> None:
+        limit = config.HS_CREDIT_BUDGET if budget_limit is None else budget_limit
+        self.budget = Budget(limit=limit)
+        self.detector = get_detector(force_mock=force_mock, budget=self.budget)
         self.result: AuditResult = None
 
     def run(self, catalog_dir, royalties_csv=None, truth_csv=None,
@@ -44,6 +46,7 @@ class AuditAgent:
             catalog_dir=str(catalog_dir),
             provider=self.detector.name,
             mock_mode=self.detector.is_mock,
+            budget=self.budget,
         )
         self.result = result
 
@@ -71,14 +74,39 @@ class AuditAgent:
             count=len(files),
         )
 
+        # Hash every file once. The digest is both the cache key and the
+        # evidence trail, so doing it up front means the budget estimate below
+        # is a fact about this catalog rather than an assumption.
+        digests = {f: sha256_file(f) for f in files}
+        already = sum(1 for f in files if self.detector.is_cached(digests[f]))
+        needed = len(files) - already
+
+        yield _ev(
+            "tool_result", "budget check",
+            "%d of %d already cached. %s"
+            % (already, len(files), config.budget_summary(needed)),
+            needed=needed, cached=already, limit=self.budget.limit,
+        )
+
+        if needed > self.budget.limit:
+            yield _ev(
+                "warn", "Catalog exceeds the call budget",
+                "%d assets need a live call and the budget is %d. %d will be "
+                "scored; the remaining %d are reported unscored rather than "
+                "assumed clean. Raise HS_CREDIT_BUDGET or narrow the catalog."
+                % (needed, self.budget.limit, self.budget.limit,
+                   needed - self.budget.limit),
+            )
+
         # 2. score ------------------------------------------------------
         yield _ev("step", PLAN[1],
-                  "detector: %s" % self.detector.name)
+                  "detector: %s | budget %d" % (self.detector.name,
+                                                self.budget.limit))
         assets = []
         cached_n = 0
         failed_n = 0
         for i, path in enumerate(files, 1):
-            score = self.detector.detect(path)
+            score = self.detector.detect(path, digest=digests[path])
             if score.cached:
                 cached_n += 1
             if not score.ok:
@@ -92,6 +120,23 @@ class AuditAgent:
                     done=i, total=len(files),
                 )
         result.assets = assets
+
+        yield _ev(
+            "tool_result", "budget spent",
+            "%d live calls spent of %d budgeted, %d served from cache, "
+            "%d skipped for lack of budget"
+            % (self.budget.spent, self.budget.limit,
+               self.budget.served_from_cache, self.budget.skipped),
+            spent=self.budget.spent, remaining=self.budget.remaining,
+        )
+
+        if self.budget.skipped:
+            yield _ev(
+                "warn", "Budget exhausted mid-run",
+                "%d assets were never scored. They are counted as detection "
+                "failures and excluded from the clean base."
+                % self.budget.skipped,
+            )
 
         if failed_n:
             yield _ev(
