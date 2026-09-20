@@ -42,6 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--budget", type=int, default=None,
                    help="max live API calls for this run (default %d)"
                         % config.HS_CREDIT_BUDGET)
+    p.add_argument("--fresh", action="store_true",
+                   help="ignore cached responses and call the API for every "
+                        "asset; spends a credit each time, for demos and "
+                        "re-verification")
     p.add_argument("--mock", action="store_true",
                    help="force the mock detector (development only)")
     p.add_argument("--allow-mock", action="store_true",
@@ -148,7 +152,8 @@ def main(argv=None) -> int:
                     port=args.port or webui.DEFAULT_PORT)
         return 0
 
-    agent = AuditAgent(force_mock=args.mock, budget_limit=args.budget)
+    agent = AuditAgent(force_mock=args.mock, budget_limit=args.budget,
+                       ignore_cache=args.fresh)
 
     print()
     for ev in agent.run(

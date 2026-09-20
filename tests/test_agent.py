@@ -290,3 +290,79 @@ class TestCatalogBoundary(unittest.TestCase):
         (self.catalog / "real.mp3").unlink()
         _, events = self.audit()
         self.assertEqual(events[-1].type, "error")
+
+
+class TestIgnoreCache(CatalogFixture):
+    """A demo needs the call to actually happen.
+
+    The cache is what makes a re-run free, and that is exactly wrong when the
+    point of the run is to watch a real request leave the machine.
+    """
+
+    def test_the_detector_is_told_to_skip_the_cache(self):
+        agent = AuditAgent(force_mock=True, ignore_cache=True)
+        # The mock detector has no cache to skip, so assert the wiring on the
+        # live one, which is what a demo actually uses.
+        from catalog_audit.detector import get_detector
+        from catalog_audit.models import Budget
+        live = get_detector(force_mock=False, budget=Budget(limit=1),
+                            ignore_cache=True)
+        self.assertTrue(getattr(live, "ignore_cache", False))
+        self.assertIsNotNone(agent)
+
+    def test_default_still_uses_the_cache(self):
+        from catalog_audit.detector import get_detector
+        from catalog_audit.models import Budget
+        live = get_detector(force_mock=False, budget=Budget(limit=1))
+        self.assertFalse(live.ignore_cache)
+
+    def test_the_preflight_does_not_promise_a_cache_hit_it_will_ignore(self):
+        """With the cache ignored, nothing counts as already scored."""
+        class AlwaysCached:
+            name, is_mock, ignore_cache = "humanstandard", False, True
+
+            def __init__(self):
+                self.budget = None
+
+            def is_cached(self, digest):
+                return True          # would otherwise report everything cached
+
+            def detect(self, path, digest=""):
+
+                from catalog_audit.models import TrackScore
+                return TrackScore(filename=Path(path).name, path=str(path),
+                                  ai_score=95.0, confidence=0.9,
+                                  provider=self.name, verdict="ai")
+
+        agent = AuditAgent(force_mock=True)
+        agent.detector = AlwaysCached()
+        events = list(agent.run(self.catalog))
+        check = next(e for e in events if e.title == "budget check")
+        self.assertEqual(check.data["cached"], 0)
+        self.assertEqual(check.data["needed"], len(self.HUMAN) + len(self.AI))
+        self.assertIn("Cache ignored", check.detail)
+
+    def test_a_normal_run_still_reports_cache_hits(self):
+        class AlwaysCached:
+            name, is_mock, ignore_cache = "humanstandard", False, False
+
+            def __init__(self):
+                self.budget = None
+
+            def is_cached(self, digest):
+                return True
+
+            def detect(self, path, digest=""):
+
+                from catalog_audit.models import TrackScore
+                return TrackScore(filename=Path(path).name, path=str(path),
+                                  ai_score=1.0, confidence=0.9,
+                                  provider=self.name, verdict="human",
+                                  cached=True)
+
+        agent = AuditAgent(force_mock=True)
+        agent.detector = AlwaysCached()
+        events = list(agent.run(self.catalog))
+        check = next(e for e in events if e.title == "budget check")
+        self.assertEqual(check.data["needed"], 0)
+        self.assertNotIn("Cache ignored", check.detail)

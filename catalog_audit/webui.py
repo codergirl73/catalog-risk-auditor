@@ -136,7 +136,8 @@ class Handler(BaseHTTPRequestHandler):
         options = self.server.options
         try:
             agent = AuditAgent(force_mock=options["mock"],
-                               budget_limit=options["budget"])
+                               budget_limit=options["budget"],
+                               ignore_cache=options.get("fresh", False))
             for event in agent.run(
                 options["catalog"],
                 royalties_csv=options["royalties"],
@@ -206,6 +207,7 @@ def options_from(args) -> dict:
         "mock": args.mock,
         "allow_mock": args.allow_mock,
         "budget": args.budget,
+        "fresh": args.fresh,
     }
 
 

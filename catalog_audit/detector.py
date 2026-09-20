@@ -335,10 +335,15 @@ class LiveDetector:
     name = "humanstandard"
     is_mock = False
 
-    def __init__(self, budget: Budget | None = None) -> None:
+    def __init__(self, budget: Budget | None = None,
+                 ignore_cache: bool = False) -> None:
         config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
         self._last_call = 0.0
         self.budget = budget
+        # Demonstrations and re-verification need the call to actually happen.
+        # The result is still written to the cache afterwards; only the read
+        # is skipped, so this costs a credit every time by design.
+        self.ignore_cache = ignore_cache
 
     def detect(self, path, digest: str = "") -> TrackScore:
         """Score one file, from cache where possible.
@@ -357,7 +362,7 @@ class LiveDetector:
                 provider=self.name, sha256=digest, error=msg,
             )
 
-        payload = self._read_cache(digest)
+        payload = None if self.ignore_cache else self._read_cache(digest)
         cached = payload is not None
         if cached and self.budget:
             self.budget.note_cached()
@@ -687,12 +692,13 @@ class MockDetector:
         )
 
 
-def get_detector(force_mock: bool = False, budget: Budget | None = None):
+def get_detector(force_mock: bool = False, budget: Budget | None = None,
+                 ignore_cache: bool = False):
     """Live whenever a key exists. Mock only when asked for, or when there is
     no key at all — and it is loud about it either way."""
     if force_mock or not config.HS_API_KEY:
         return MockDetector(budget=budget)
-    return LiveDetector(budget=budget)
+    return LiveDetector(budget=budget, ignore_cache=ignore_cache)
 
 
 # argv[0] is the module; argv[1] is the audio file this expects.

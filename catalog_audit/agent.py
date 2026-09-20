@@ -42,10 +42,12 @@ class AuditAgent:
     """
 
     def __init__(self, force_mock: bool = False,
-                 budget_limit: int | None = None) -> None:
+                 budget_limit: int | None = None,
+                 ignore_cache: bool = False) -> None:
         limit = config.HS_CREDIT_BUDGET if budget_limit is None else budget_limit
         self.budget = Budget(limit=limit)
-        self.detector = get_detector(force_mock=force_mock, budget=self.budget)
+        self.detector = get_detector(force_mock=force_mock, budget=self.budget,
+                                     ignore_cache=ignore_cache)
         self.result: AuditResult | None = None
         # Products of the steps, shared between them in PLAN order.
         self._digests: dict = {}
@@ -132,14 +134,17 @@ class AuditAgent:
         # about this catalog rather than an assumption, and the work is reused
         # by the detection call instead of repeated.
         self._digests = {f: sha256_file(f) for f in files}
-        already = sum(1 for f in files
-                      if self.detector.is_cached(self._digests[f]))
+        ignoring = getattr(self.detector, "ignore_cache", False)
+        already = 0 if ignoring else sum(
+            1 for f in files if self.detector.is_cached(self._digests[f]))
         needed = len(files) - already
 
         yield _ev(
             "tool_result", "budget check",
-            "%d of %d already cached. %s"
-            % (already, len(files), config.budget_summary(needed)),
+            "%d of %d already cached. %s%s"
+            % (already, len(files), config.budget_summary(needed),
+               " Cache ignored: every asset is being sent live."
+               if ignoring else ""),
             needed=needed, cached=already, limit=self.budget.limit,
         )
         yield _ev(
