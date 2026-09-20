@@ -47,6 +47,22 @@ def load_manifest(path: Path) -> dict:
     return out
 
 
+# SONICS names its members fake_<id>_<generator>_<n>.mp3, so the generator
+# that actually made each track is recoverable from the filename. That turns
+# the answer key from "AI or not" into "AI, and by which model", which is a
+# second thing the audit can be graded on.
+KNOWN_GENERATORS = ("suno", "udio", "musicgen", "audioldm", "musicldm",
+                    "stableaudio", "mustango", "elevenlabs", "lyria", "treblo")
+
+
+def true_origin(filename: str) -> str:
+    stem = filename.lower()
+    for gen in KNOWN_GENERATORS:
+        if gen in stem:
+            return gen
+    return ""
+
+
 def collect(catalog_dir: Path) -> list:
     """Find audio under human/ and ai/ and label it by folder."""
     rows = []
@@ -56,7 +72,11 @@ def collect(catalog_dir: Path) -> list:
             continue
         for p in sorted(sub.rglob("*")):
             if p.is_file() and p.suffix.lower() in AUDIO_EXT:
-                rows.append({"filename": p.name, "true_label": label})
+                rows.append({
+                    "filename": p.name,
+                    "true_label": label,
+                    "true_origin": true_origin(p.name) if label == "ai" else "",
+                })
     return rows
 
 
@@ -105,10 +125,13 @@ def main(argv=None) -> int:
 
     truth_path = data_dir / "ground_truth.csv"
     with truth_path.open("w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=["filename", "true_label"])
+        w = csv.DictWriter(fh, fieldnames=["filename", "true_label",
+                                           "true_origin"])
         w.writeheader()
         for r in rows:
-            w.writerow({"filename": r["filename"], "true_label": r["true_label"]})
+            w.writerow({"filename": r["filename"],
+                        "true_label": r["true_label"],
+                        "true_origin": r.get("true_origin", "")})
 
     roy_path = data_dir / "royalties.csv"
     with roy_path.open("w", newline="", encoding="utf-8") as fh:
@@ -130,7 +153,15 @@ def main(argv=None) -> int:
     ai_rev = sum(r["annual_usd"] for r in rows if r["true_label"] == "ai")
     total = sum(r["annual_usd"] for r in rows)
 
+    gens = {}
+    for r in rows:
+        if r.get("true_origin"):
+            gens[r["true_origin"]] = gens.get(r["true_origin"], 0) + 1
+
     print("catalog: %d tracks (%d human, %d ai)" % (len(rows), human, ai))
+    if gens:
+        print("planted generators: %s"
+              % ", ".join("%s x%d" % (k, v) for k, v in sorted(gens.items())))
     print("planted AI share: %.1f%% by count, %.1f%% by revenue"
           % (100.0 * ai / len(rows), 100.0 * ai_rev / total if total else 0.0))
 

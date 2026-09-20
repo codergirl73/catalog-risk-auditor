@@ -60,10 +60,15 @@ python3 scripts/probe_api.py --upload path/to/track.mp3
 # 3. build a catalog: CC human music from Internet Archive netlabels
 python3 scripts/fetch_catalog.py --limit 116
 
-# 4. add AI-generated tracks to data/catalog/ai/, then label and price it
+# 4. plant real AI tracks: Suno and Udio songs from the SONICS dataset.
+#    Reads the 3.8 GB archive's index over HTTP byte ranges and pulls out
+#    only the songs it needs -- about 30 MB on the wire.
+python3 scripts/fetch_ai_tracks.py --limit 14
+
+# 5. label and price the catalog
 python3 scripts/build_dataset.py
 
-# 5. audit
+# 6. audit
 python3 run.py data/catalog \
     --royalties data/royalties.csv \
     --truth data/ground_truth.csv \
@@ -168,10 +173,20 @@ still empty on every push.
 
 ## Disclosure
 
-The demonstration catalog and its royalty figures are constructed. The audio is
-real, CC-licensed, human-made music; the AI tracks were generated deliberately
-and labelled so accuracy could be measured; the API responses are real; the
-acquisition scenario is hypothetical.
+The demonstration catalog is constructed, and every part of it is traceable:
+
+| Part | What it is |
+|---|---|
+| **Human tracks** | 116 real, CC-licensed recordings by real people, from [Internet Archive netlabel collections](https://archive.org/details/netlabels). Provenance in `data/human_manifest.csv`. |
+| **AI tracks** | 14 real generated songs from the [SONICS dataset](https://huggingface.co/datasets/awsaf49/sonics) (Rahman et al., ICLR 2025), produced by **Suno** (v2/v3/v3.5) and **Udio** (v32/v130). CC BY-NC 4.0. Provenance in `data/ai_manifest.csv`. |
+| **Royalty figures** | Generated. A Pareto distribution over the catalog, with AI tracks earning less per track by default — see `scripts/build_dataset.py`, which states the assumption and lets you remove it. |
+| **Detection results** | **Real.** Every verdict comes from a live HumanStandard API call. `out/api_evidence.json` is a raw response. |
+| **The acquisition** | Hypothetical. There is no Meridian Sound Library. |
+
+No audio anywhere in this catalog was synthesised by us for the purpose of
+being labelled "AI". The planted tracks are genuine generative-model output,
+which is the only thing that makes the reported precision and recall mean
+anything.
 
 This tool produces an audio-authenticity assessment, not a legal opinion or a
 valuation. Copyright enforceability of AI-generated works is a question for

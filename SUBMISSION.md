@@ -298,11 +298,24 @@ Memo lands in `out/risk_memo.html`.
 
 ## Disclosure
 
-The catalog and its royalty figures are constructed for demonstration. The
-audio is real, CC-licensed, human-made music from Internet Archive netlabel
-collections; the AI tracks were generated deliberately and labelled so that
-accuracy could be measured; **the HumanStandard API responses are real**; the
-acquisition scenario is hypothetical.
+The demonstration catalog is constructed, and every part of it is traceable:
+
+| Part | What it is |
+|---|---|
+| **Human tracks** | 116 real, CC-licensed recordings by real people, from [Internet Archive netlabel collections](https://archive.org/details/netlabels). Provenance in `data/human_manifest.csv`. |
+| **AI tracks** | 14 real generated songs from the [SONICS dataset](https://huggingface.co/datasets/awsaf49/sonics) (Rahman et al., ICLR 2025), produced by **Suno** (v2/v3/v3.5) and **Udio** (v32/v130). CC BY-NC 4.0. Provenance in `data/ai_manifest.csv`. |
+| **Royalty figures** | Generated. A Pareto distribution over the catalog, with AI tracks earning less per track by default — see `scripts/build_dataset.py`, which states the assumption and lets you remove it. |
+| **Detection results** | **Real.** Every verdict comes from a live HumanStandard API call. `out/api_evidence.json` is a raw response. |
+| **The acquisition** | Hypothetical. There is no Meridian Sound Library. |
+
+No audio anywhere in this catalog was synthesised by us for the purpose of
+being labelled "AI". The planted tracks are genuine generative-model output,
+which is the only thing that makes the reported precision and recall mean
+anything.
+
+**Citation.** SONICS: Synthetic Or Not — Identifying Counterfeit Songs,
+Rahman et al., ICLR 2025. Used under CC BY-NC 4.0; this is a non-commercial
+hackathon demonstration.
 
 This tool produces an audio-authenticity assessment, not a legal opinion or a
 valuation. Copyright enforceability of AI-generated works is a question for

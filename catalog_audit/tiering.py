@@ -33,7 +33,8 @@ def _evidence(score: TrackScore) -> str:
         bits.append(score.industry_label_basis[0].rstrip(".") + ".")
     # origin names a reference population, which may be a generator or the
     # verified-human set. Only the former is worth putting in an escalation.
-    if score.origin and score.origin.lower() != "human":
+    if score.origin and score.origin.lower() not in (
+            "human", "uncertain", "unknown", "none"):
         if score.origin_summary:
             bits.append("Attributed to %s: %s"
                         % (score.origin.title(), score.origin_summary))

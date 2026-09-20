@@ -196,6 +196,8 @@ def _origin_section(assets) -> str:
         sc = a.score
         if not sc or not sc.ok or not sc.origin:
             continue
+        if sc.origin.lower() in ("uncertain", "unknown", "none"):
+            continue
         row = tally.setdefault(sc.origin.lower(),
                                {"n": 0, "usd": 0.0, "line": ""})
         row["n"] += 1

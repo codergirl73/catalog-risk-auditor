@@ -46,13 +46,35 @@ def load_ground_truth(csv_path) -> dict:
     return out
 
 
-def attach(assets: list, truth: dict) -> int:
+def load_origins(csv_path) -> dict:
+    """Read the answer key's `true_origin` column, where it has one.
+
+    Knowing a track is AI is one claim. Knowing which model made it is a
+    second, harder one, and the API offers an answer to it -- so it can be
+    graded too.
+    """
+    path = Path(csv_path)
+    out: dict = {}
+    if not path.exists():
+        return out
+    with path.open(newline="", encoding="utf-8") as fh:
+        for row in csv.DictReader(fh):
+            name = (row.get("filename") or "").strip()
+            origin = (row.get("true_origin") or "").strip().lower()
+            if name and origin:
+                out[name] = origin
+    return out
+
+
+def attach(assets: list, truth: dict, origins: dict = None) -> int:
     matched = 0
+    origins = origins or {}
     for asset in assets:
         label = truth.get(asset.filename)
         if label:
             asset.truth = label
             matched += 1
+        asset.true_origin = origins.get(asset.filename, "")
     return matched
 
 
@@ -78,6 +100,7 @@ def evaluate(assets: list) -> Evaluation:
         called_ai = asset.tier == Tier.SUSPECT
 
         if called_ai and asset.truth == "ai":
+            _score_attribution(ev, asset)
             ev.true_positive += 1
         elif called_ai and asset.truth == "human":
             ev.false_positive += 1
@@ -89,6 +112,42 @@ def evaluate(assets: list) -> Evaluation:
             ev.false_negative_files.append(asset.filename)
 
     return ev
+
+
+def _score_attribution(ev: Evaluation, asset) -> None:
+    """Grade the generator attribution on a correctly-caught AI track."""
+    if not asset.true_origin:
+        return
+    ev.origin_labelled += 1
+    claimed = (asset.score.origin or "").strip().lower() if asset.score else ""
+    # "uncertain" and "human" are both the API declining to name a generator,
+    # which is a different thing from naming the wrong one. Counting a
+    # declined attribution as an error would punish the detector for the one
+    # behaviour this whole tool exists to reward.
+    if claimed in ("", "human", "uncertain", "unknown", "none"):
+        ev.origin_absent += 1
+    elif claimed == asset.true_origin:
+        ev.origin_correct += 1
+    else:
+        ev.origin_wrong += 1
+        ev.origin_confusions.append(
+            "%s: said %s, was %s" % (asset.filename, claimed,
+                                     asset.true_origin))
+
+
+def attribution_summary(ev: Evaluation) -> str:
+    """One line on how well the generator attribution did."""
+    if not ev.origin_labelled:
+        return ""
+    parts = ["Of %d correctly flagged AI tracks whose true generator is known, "
+             "%d were attributed to the right one"
+             % (ev.origin_labelled, ev.origin_correct)]
+    if ev.origin_wrong:
+        parts.append("%d to the wrong one (%s)"
+                     % (ev.origin_wrong, "; ".join(ev.origin_confusions[:3])))
+    if ev.origin_absent:
+        parts.append("%d carried no attribution" % ev.origin_absent)
+    return ", ".join(parts) + "."
 
 
 def summary(ev: Evaluation) -> str:
@@ -121,6 +180,10 @@ def summary(ev: Evaluation) -> str:
 
     # A rate computed over a handful of tracks is a count wearing a decimal
     # point. Say which one it is rather than letting the reader assume.
+    attribution = attribution_summary(ev)
+    if attribution:
+        parts.append(attribution)
+
     if 0 < planted < SMALL_SAMPLE:
         parts.append(
             "Only %d AI track%s was planted, so these are counts rather than "

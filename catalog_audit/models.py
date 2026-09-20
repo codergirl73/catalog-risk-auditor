@@ -119,6 +119,7 @@ class Asset:
     royalty: Optional[Royalty] = None
     tier: Tier = Tier.ERROR
     truth: str = ""            # "human" | "ai" | "" when unlabelled
+    true_origin: str = ""      # the generator that actually made it, if known
     notes: list = field(default_factory=list)
 
     @property
@@ -176,6 +177,18 @@ class Evaluation:
     contested_human: int = 0     # human tracks parked in the contested band
     false_positive_files: list = field(default_factory=list)
     false_negative_files: list = field(default_factory=list)
+
+    # Attribution: not just "was it AI" but "did it name the right generator".
+    origin_labelled: int = 0
+    origin_correct: int = 0
+    origin_wrong: int = 0
+    origin_absent: int = 0
+    origin_confusions: list = field(default_factory=list)
+
+    @property
+    def origin_accuracy(self):
+        return (self.origin_correct / self.origin_labelled
+                if self.origin_labelled else None)
 
     @property
     def precision(self) -> Optional[float]:

@@ -139,8 +139,12 @@ Verified against docs.hsverify.com. Do not re-guess any of this.
 
 ## Disclosure that must appear in the submission
 
-The catalog and its royalty figures are constructed for demonstration. The
-audio is real, CC-licensed, human-made music; the AI tracks were generated
-deliberately and labelled; the API responses are real; the deal is
-hypothetical. State this plainly — it costs nothing and removes the only
-question a judge could raise about the numbers.
+Human audio: real CC-licensed netlabel music from Internet Archive.
+AI audio: real Suno and Udio generations from the SONICS dataset
+(awsaf49/sonics, CC BY-NC 4.0, Rahman et al. ICLR 2025) — **not** audio we
+synthesised and labelled, which would have made precision and recall
+meaningless. Royalties: generated, with the assumption stated. Detection
+results: real. The deal: hypothetical.
+
+State this plainly — it costs nothing and removes the only question a judge
+could raise about the numbers.

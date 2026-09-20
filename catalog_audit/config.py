@@ -149,28 +149,26 @@ def budget_summary(needed: int) -> str:
     )
 
 
-# Requests per analysed track: one upload plus the status polls before it
-# completes. Used only to estimate how long a run will take.
-_REQUESTS_PER_TRACK = 5
+# Measured against the live API on full-length tracks: about 45 seconds each,
+# end to end. The rate limiter is not the constraint -- GPU analysis is -- so
+# estimating from the request budget alone understates the wait by an order of
+# magnitude, which is worse than not estimating at all.
+SECONDS_PER_TRACK = _f("HS_SECONDS_PER_TRACK", 45.0)
 
 
 def runtime_estimate(needed: int) -> str:
-    """Roughly how long `needed` live analyses will take, and why.
-
-    Analysis is sequential and rate-limited, so a large catalog is a wait
-    rather than a moment. Saying so before the run beats discovering it
-    halfway through.
-    """
+    """Roughly how long `needed` live analyses will take, and why."""
     if needed <= 0:
         return "nothing to score; every asset is already cached"
-    seconds = needed * _REQUESTS_PER_TRACK * max(RATE_FLOOR, HS_RATE_LIMIT_S)
-    minutes = seconds / 60.0
-    if minutes < 1.5:
-        pretty = "under 2 minutes"
-    else:
+    minutes = needed * SECONDS_PER_TRACK / 60.0
+    if minutes < 2:
+        pretty = "a couple of minutes"
+    elif minutes < 90:
         pretty = "roughly %d minutes" % round(minutes)
+    else:
+        pretty = "roughly %.1f hours" % (minutes / 60.0)
     return (
-        f"{pretty} at {HS_RATE_LIMIT_S:.1f}s between requests "
-        f"(~{60 / HS_RATE_LIMIT_S:.0f}/min against their 60/min limit); "
-        f"results are cached, so re-runs are free"
+        f"{pretty} at about {SECONDS_PER_TRACK:.0f}s per track \u2014 analysis "
+        f"time, not rate limiting. Results are cached by file hash, so this is "
+        f"paid once and every re-run is free, including after an interruption"
     )

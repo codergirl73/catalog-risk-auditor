@@ -225,7 +225,8 @@ class AuditAgent:
         yield _ev("step", PLAN[6])
         if truth_csv:
             truth = evaluation.load_ground_truth(truth_csv)
-            matched = evaluation.attach(assets, truth)
+            origins = evaluation.load_origins(truth_csv)
+            matched = evaluation.attach(assets, truth, origins)
             ev = evaluation.evaluate(assets)
             result.evaluation = ev
             yield _ev("finding", "Accuracy against ground truth",
