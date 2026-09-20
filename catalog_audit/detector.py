@@ -381,7 +381,6 @@ class LiveDetector:
         last: Exception = RuntimeError("no attempt made")
         for attempt in range(config.HS_MAX_RETRIES + 1):
             try:
-                self._throttle()
                 return self._call(p)
             except RuntimeError as exc:
                 last = exc
@@ -438,13 +437,26 @@ class LiveDetector:
             "Job %s did not complete within %.0fs (last status: %s)"
             % (job_id, config.HS_POLL_TIMEOUT_S, last_status))
 
-    @staticmethod
-    def _fetch(req: urllib.request.Request) -> dict:
+    def _fetch(self, req: urllib.request.Request) -> dict:
+        """Every request goes through here, so every request is throttled.
+
+        Polling is requests too. Rate-limiting only the uploads would have let
+        a 116-track run issue several hundred unthrottled status checks.
+        """
+        self._throttle()
         try:
             with urllib.request.urlopen(req, timeout=config.HS_TIMEOUT_S) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:400]
+            if exc.code == 429:
+                # Respect Retry-After when they send one, then let the caller
+                # retry rather than sleeping inside a request.
+                wait = exc.headers.get("Retry-After") if exc.headers else None
+                try:
+                    time.sleep(min(30.0, float(wait)))
+                except (TypeError, ValueError):
+                    time.sleep(5.0)
             raise RuntimeError("HumanStandard API %s: %s" % (exc.code, detail))
         except Exception as exc:
             raise RuntimeError("HumanStandard API unreachable: %s" % exc)
@@ -491,12 +503,29 @@ class MockDetector:
             self.budget.spend()
 
         bucket = int(digest[:8], 16) % 100
-        # Confidence sits above the floor only so a mock run exercises all
-        # three tiers and you can smoke-test the pipeline before a key
-        # arrives. It is as fabricated as the score.
+
+        # Shape the fixture like a real response, including tier_verdicts.
+        # Without them every local run would exercise the score-band fallback
+        # and the calibrated path -- the one that actually ships -- would be
+        # covered only by unit tests. The numbers remain fabricated.
+        if bucket > 78:
+            verdict, tiers = "ai", ("ai", "ai", "ai")
+        elif bucket > 62:
+            verdict, tiers = "ai", ("uncertain", "ai", "ai")
+        elif bucket > 40:
+            verdict, tiers = "uncertain", ("uncertain", "human", "ai")
+        else:
+            verdict, tiers = "human", ("human", "human", "human")
+
         return TrackScore(
             filename=p.name, path=str(p), ai_score=float(bucket),
             confidence=0.75, provider=self.name, sha256=digest,
+            verdict=verdict,
+            tier_verdicts=dict(zip(
+                ("press_safe", "human_safe", "recall"), tiers)),
+            origin="suno" if verdict == "ai" else "",
+            origin_summary=("fabricated attribution, not a real detection"
+                            if verdict == "ai" else ""),
             raw={"mock": True, "note": "synthetic value, not a real detection"},
         )
 

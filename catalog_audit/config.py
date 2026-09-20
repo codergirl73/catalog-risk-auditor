@@ -61,7 +61,12 @@ HS_DETAIL = os.environ.get("HS_DETAIL", "full").strip()
 HS_MOCK_SCENARIO = os.environ.get("HS_MOCK_SCENARIO", "").strip()
 HS_TIMEOUT_S = _f("HS_TIMEOUT_S", 60.0)
 HS_MAX_RETRIES = int(_f("HS_MAX_RETRIES", 2))
-HS_RATE_LIMIT_S = _f("HS_RATE_LIMIT_S", 0.35)   # polite pause between calls
+# Minimum gap between ANY two requests, polls included. Their documented
+# limit is 60/min, so 1.1s leaves headroom. This is the whole rate-limit
+# strategy: one sequential worker that never goes faster than the limit beats
+# a concurrent one that has to recover from 429s.
+HS_RATE_LIMIT_S = _f("HS_RATE_LIMIT_S", 1.1)
+RATE_FLOOR = 0.05
 
 # Hard ceiling on live detection calls for one run. The hackathon key is
 # issued with 200 credits, so an unguarded run over a large catalog could
@@ -132,4 +137,31 @@ def budget_summary(needed: int) -> str:
     return (
         f"{needed} live call{'' if needed == 1 else 's'} needed, "
         f"{HS_CREDIT_BUDGET} credit budget"
+    )
+
+
+# Requests per analysed track: one upload plus the status polls before it
+# completes. Used only to estimate how long a run will take.
+_REQUESTS_PER_TRACK = 5
+
+
+def runtime_estimate(needed: int) -> str:
+    """Roughly how long `needed` live analyses will take, and why.
+
+    Analysis is sequential and rate-limited, so a large catalog is a wait
+    rather than a moment. Saying so before the run beats discovering it
+    halfway through.
+    """
+    if needed <= 0:
+        return "nothing to score; every asset is already cached"
+    seconds = needed * _REQUESTS_PER_TRACK * max(RATE_FLOOR, HS_RATE_LIMIT_S)
+    minutes = seconds / 60.0
+    if minutes < 1.5:
+        pretty = "under 2 minutes"
+    else:
+        pretty = "roughly %d minutes" % round(minutes)
+    return (
+        f"{pretty} at {HS_RATE_LIMIT_S:.1f}s between requests "
+        f"(~{60 / HS_RATE_LIMIT_S:.0f}/min against their 60/min limit); "
+        f"results are cached, so re-runs are free"
     )

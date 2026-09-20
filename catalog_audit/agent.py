@@ -87,6 +87,10 @@ class AuditAgent:
             % (already, len(files), config.budget_summary(needed)),
             needed=needed, cached=already, limit=self.budget.limit,
         )
+        yield _ev(
+            "tool_result", "runtime estimate",
+            config.runtime_estimate(min(needed, self.budget.limit)),
+        )
 
         if needed > self.budget.limit:
             yield _ev(
