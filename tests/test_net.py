@@ -134,3 +134,96 @@ class TestLinkSafety(unittest.TestCase):
         for value in ("", None, 12345, "   "):
             with self.subTest(value=value):
                 self.assertFalse(net.is_safe_link(value))
+
+
+class TestRedirectPinning(unittest.TestCase):
+    """Pinning only the first URL pins nothing.
+
+    urllib permits redirects to http, https and ftp, and copies the request
+    headers onto the new request -- so an https endpoint can 302 to plain
+    http and the bearer token follows it in cleartext.
+    """
+
+    def handler(self):
+        from catalog_audit import net
+        return net._PinnedRedirectHandler()
+
+    def authed_request(self):
+        req = urllib.request.Request("https://api.example.com/analyze")
+        req.add_header("Authorization", "Bearer SECRET-TOKEN")
+        req.add_header("X-API-Key", "SECRET-TOKEN")
+        return req
+
+    def redirect_to(self, url):
+        return self.handler().redirect_request(
+            self.authed_request(), None, 302, "Found", {}, url)
+
+    def test_a_downgrade_to_http_is_refused(self):
+        with self.assertRaises(UnsafeURLError):
+            self.redirect_to("http://evil.example.com/x")
+
+    def test_a_redirect_to_ftp_is_refused(self):
+        with self.assertRaises(UnsafeURLError):
+            self.redirect_to("ftp://evil.example.com/x")
+
+    def test_a_redirect_to_a_file_url_is_refused(self):
+        with self.assertRaises(UnsafeURLError):
+            self.redirect_to("file:///etc/passwd")
+
+    def test_credentials_do_not_follow_to_another_host(self):
+        new = self.redirect_to("https://other.example.com/x")
+        leaked = [k for k in new.headers
+                  if k.lower() in ("authorization", "x-api-key")]
+        self.assertEqual(leaked, [], "credentials followed to a new host")
+
+    def test_credentials_survive_a_same_host_redirect(self):
+        new = self.redirect_to("https://api.example.com/analyze/v2")
+        kept = sorted(k.lower() for k in new.headers
+                      if k.lower() in ("authorization", "x-api-key"))
+        self.assertEqual(kept, ["authorization", "x-api-key"])
+
+    def test_host_comparison_ignores_case_and_port_absence(self):
+        from catalog_audit import net
+        self.assertEqual(net._host("https://API.Example.com/x"),
+                         net._host("https://api.example.com/y"))
+
+    def test_the_opener_uses_the_pinned_handler(self):
+        from catalog_audit import net
+        self.assertTrue(any(isinstance(h, net._PinnedRedirectHandler)
+                            for h in net._OPENER.handlers))
+
+
+class TestKeyRedaction(unittest.TestCase):
+    """An error body is quoted back to whoever is debugging, and the same
+    text reaches the cache and audit.json."""
+
+    def test_the_key_is_removed_from_surfaced_text(self):
+        from catalog_audit import config
+        original = config.HS_API_KEY
+        try:
+            config.HS_API_KEY = "hs_live_abcdefghijklmnop"
+            out = config.redact("401: sent Bearer hs_live_abcdefghijklmnop")
+            self.assertNotIn("hs_live_abcdefghijklmnop", out)
+            self.assertIn("<redacted>", out)
+        finally:
+            config.HS_API_KEY = original
+
+    def test_redaction_is_a_no_op_without_a_key(self):
+        from catalog_audit import config
+        original = config.HS_API_KEY
+        try:
+            config.HS_API_KEY = ""
+            self.assertEqual(config.redact("nothing to hide"), "nothing to hide")
+        finally:
+            config.HS_API_KEY = original
+
+    def test_a_short_value_is_not_treated_as_a_key(self):
+        # Redacting a two-character "key" would scrub half the message.
+        from catalog_audit import config
+        original = config.HS_API_KEY
+        try:
+            config.HS_API_KEY = "ab"
+            self.assertEqual(config.redact("a table of absolutes"),
+                             "a table of absolutes")
+        finally:
+            config.HS_API_KEY = original

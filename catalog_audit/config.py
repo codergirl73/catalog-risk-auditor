@@ -134,6 +134,25 @@ AUDIO_EXTENSIONS = {".wav", ".mp3", ".flac", ".m4a", ".aif", ".aiff", ".ogg"}
 OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", str(ROOT / "out")))
 
 
+# Below this length a "key" is too short to redact safely -- scrubbing a
+# two-character string would gut the message it appears in.
+MIN_REDACTABLE_KEY = 8
+
+
+def redact(text: str) -> str:
+    """Remove the API key from anything about to be printed or stored.
+
+    Error bodies are quoted back to help whoever is debugging, and a
+    misconfigured server that echoes request headers would put the key in one.
+    The same text reaches the response cache and audit.json, so it is scrubbed
+    once, here, at the point it becomes output.
+    """
+    out = str(text)
+    if HS_API_KEY and len(HS_API_KEY) >= MIN_REDACTABLE_KEY:
+        out = out.replace(HS_API_KEY, "<redacted>")
+    return out
+
+
 def thresholds_summary() -> str:
     """The tiering rule, in one line, printed on every run.
 

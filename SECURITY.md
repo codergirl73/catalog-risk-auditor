@@ -115,6 +115,26 @@ outside the catalog directory are therefore **not scored**, and the refusal is
 announced with the filenames rather than dropped silently.
 `FOLLOW_EXTERNAL_SYMLINKS=1` lifts it for a catalog you assembled yourself.
 
+## Redirects are not a hole in the scheme pinning
+
+Checking only the first URL pins nothing. `urllib` permits redirects to
+`http`, `https` and `ftp`, and copies the request headers onto the new
+request — so an HTTPS endpoint answering `302 http://attacker/` would have
+sent `Authorization: Bearer <key>` in cleartext.
+
+- **Every redirect target is re-checked** against the same https-only rule.
+- **Credential headers are stripped when the host changes**, so a redirect to
+  a different HTTPS host cannot walk off with the bearer token. That is the
+  same class of bug as CVE-2018-20060.
+- Same-host redirects keep their headers, so ordinary API behaviour works.
+
+## The key never appears in output
+
+Error bodies are quoted back to help whoever is debugging, and the same text
+reaches the response cache and `audit.json`. A misconfigured server that
+echoes request headers would put the key in one, so anything surfaced is
+passed through `config.redact()` first.
+
 ## Nothing reads an unbounded response
 
 A `Content-Length` header is a claim, not a constraint, and reading a body

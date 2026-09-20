@@ -600,15 +600,16 @@ class LiveDetector:
                     time.sleep(min(MAX_RETRY_AFTER_S, float(wait)))
                 except (TypeError, ValueError):
                     time.sleep(FALLBACK_RETRY_AFTER_S)
-            raise RuntimeError(
-                "HumanStandard API %s: %s" % (exc.code, detail)) from exc
+            raise RuntimeError(config.redact(
+                "HumanStandard API %s: %s" % (exc.code, detail))) from exc
         except Exception as exc:
-            raise RuntimeError(
-                "HumanStandard API unreachable: %s" % exc) from exc
+            raise RuntimeError(config.redact(
+                "HumanStandard API unreachable: %s" % exc)) from exc
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
-            raise RuntimeError("Non-JSON response: " + raw[:300]) from None
+            raise RuntimeError(
+                config.redact("Non-JSON response: " + raw[:300])) from None
 
 
 # Hash buckets the mock detector uses to land a file in each tier. These

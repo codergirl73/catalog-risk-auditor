@@ -91,8 +91,50 @@ def read_capped(response, limit: int = MAX_RESPONSE_BYTES) -> bytes:
     return data
 
 
+# Headers that authenticate us, and must not follow a redirect to a host we
+# did not choose to talk to.
+_CREDENTIAL_HEADERS = frozenset({"authorization", "x-api-key", "api-key",
+                                 "proxy-authorization", "cookie"})
+
+
+class _PinnedRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Re-check every redirect, and never carry credentials to a new host.
+
+    The standard handler permits redirects to http, https and ftp, and copies
+    the request headers onto the new request. Two consequences worth closing:
+
+    * An https endpoint can 302 to plain http, and the Authorization header
+      goes along in cleartext. Pinning only the first URL pins nothing.
+    * An https endpoint can 302 to a different https host, and the bearer
+      token goes with it -- the same class of bug as CVE-2018-20060.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        check_url(newurl)
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is None:
+            return None
+
+        if _host(newurl) != _host(req.full_url):
+            for name in list(new.headers):
+                if name.lower() in _CREDENTIAL_HEADERS:
+                    del new.headers[name]
+            for name in list(getattr(new, "unredirected_hdrs", {})):
+                if name.lower() in _CREDENTIAL_HEADERS:
+                    del new.unredirected_hdrs[name]
+        return new
+
+
+def _host(url: str) -> str:
+    parsed = urllib.parse.urlparse(str(url))
+    return (parsed.hostname or "").lower()
+
+
+_OPENER = urllib.request.build_opener(_PinnedRedirectHandler)
+
+
 def urlopen(request, timeout: float = DEFAULT_TIMEOUT_S):
-    """`urllib.request.urlopen` with the scheme checked first.
+    """Open a URL, with the scheme pinned across redirects too.
 
     Accepts a `Request` or a string, and checks the URL that will actually be
     opened rather than the one that was passed in.
@@ -100,6 +142,6 @@ def urlopen(request, timeout: float = DEFAULT_TIMEOUT_S):
     url = request.full_url if isinstance(
         request, urllib.request.Request) else request
     check_url(url)
-    # The scheme is constrained to https immediately above, which is the
-    # condition B310 exists to check.
-    return urllib.request.urlopen(request, timeout=timeout)  # nosec B310
+    # The scheme is constrained to https here and re-checked on every
+    # redirect by the opener, which is the condition B310 exists to check.
+    return _OPENER.open(request, timeout=timeout)  # nosec B310

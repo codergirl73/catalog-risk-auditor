@@ -116,7 +116,11 @@ def download(track: dict, dest_dir: Path) -> Path | None:
     if out.exists() and out.stat().st_size > 0:
         return out
 
-    url = DOWNLOAD_URL + track["identifier"] + "/" + urllib.parse.quote(track["name"])
+    # The identifier comes from a remote search result. Quoting it keeps a
+    # value containing ?, # or .. from rewriting the path we meant to ask for.
+    url = (DOWNLOAD_URL
+           + urllib.parse.quote(track["identifier"], safe="")
+           + "/" + urllib.parse.quote(track["name"]))
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with net.urlopen(req, timeout=90) as resp, out.open("wb") as fh:
