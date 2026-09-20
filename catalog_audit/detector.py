@@ -27,6 +27,7 @@ demo with the network unplugged.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import mimetypes
@@ -37,17 +38,20 @@ import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
-from typing import Any, Optional
 
-from . import config, http
+from . import config, net
 from .models import Budget, TrackScore
+
+# Hashing block size. Large enough that the syscall overhead disappears,
+# small enough that a long track never sits in memory whole.
+READ_CHUNK_BYTES = 1 << 16
 
 
 def sha256_file(path) -> str:
     """Content hash. Doubles as the cache key and the audit trail."""
     h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 16), b""):
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(READ_CHUNK_BYTES), b""):
             h.update(chunk)
     return h.hexdigest()
 
@@ -71,6 +75,11 @@ _MIDPOINT = 50.0
 # What to assume when a response carries a score but no confidence in it.
 _ASSUMED_CONFIDENCE = 0.8
 
+# Rate limiting is reported by status code, not by exception type.
+HTTP_TOO_MANY_REQUESTS = 429
+MAX_RETRY_AFTER_S = 30.0
+FALLBACK_RETRY_AFTER_S = 5.0
+
 # Where the label heuristic lands for each family of words. Only reached for a
 # response that gives no numeric score at all.
 _LABEL_SCORES = (
@@ -84,7 +93,7 @@ _LABEL_SCORES = (
 _VERDICTS = ("ai", "human", "uncertain", "suspicious")
 
 
-def _number(value) -> Optional[float]:
+def _number(value) -> float | None:
     """Coerce to float, refusing bool.
 
     `bool` subclasses `int`, so a naive isinstance check turns
@@ -95,7 +104,7 @@ def _number(value) -> Optional[float]:
     return float(value)
 
 
-def _first_number(flat: dict, keys) -> Optional[float]:
+def _first_number(flat: dict, keys) -> float | None:
     for key in keys:
         found = _number(flat.get(key))
         if found is not None:
@@ -130,7 +139,7 @@ def _confidence(flat: dict) -> float:
 # --- scoring strategies, tried in order -----------------------------------
 # Each returns a score already on 0-100, or None to defer to the next.
 
-def _score_from_probability(flat: dict) -> Optional[float]:
+def _score_from_probability(flat: dict) -> float | None:
     """`ai_probability`: a direct likelihood, present on every live response.
 
     Preferred over reconstructing a score from verdict plus confidence, which
@@ -140,7 +149,7 @@ def _score_from_probability(flat: dict) -> Optional[float]:
     return None if found is None else _to_percent(found)
 
 
-def _score_from_verdict(flat: dict) -> Optional[float]:
+def _score_from_verdict(flat: dict) -> float | None:
     """Reconstruct a score from the verdict and how sure the detector is.
 
     Confidence is confidence *in the verdict*, so it pushes away from the
@@ -162,18 +171,18 @@ def _score_from_verdict(flat: dict) -> Optional[float]:
     return _MIDPOINT
 
 
-def _score_from_ai_keys(flat: dict) -> Optional[float]:
+def _score_from_ai_keys(flat: dict) -> float | None:
     found = _first_number(flat, _AI_KEYS)
     return None if found is None else _to_percent(found)
 
 
-def _score_from_human_keys(flat: dict) -> Optional[float]:
+def _score_from_human_keys(flat: dict) -> float | None:
     """Invert a human-ness score into an AI-ness one."""
     found = _first_number(flat, _HUMAN_KEYS)
     return None if found is None else _PERCENT - _to_percent(found)
 
 
-def _score_from_label(flat: dict) -> Optional[float]:
+def _score_from_label(flat: dict) -> float | None:
     """Last resort: a worded classification with no number attached."""
     label = str(flat.get("label") or flat.get("classification")
                 or flat.get("verdict") or "").lower()
@@ -322,7 +331,7 @@ class LiveDetector:
     name = "humanstandard"
     is_mock = False
 
-    def __init__(self, budget: Optional[Budget] = None) -> None:
+    def __init__(self, budget: Budget | None = None) -> None:
         config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
         self._last_call = 0.0
         self.budget = budget
@@ -411,11 +420,9 @@ class LiveDetector:
             return None
 
     def _write_cache(self, digest: str, payload: dict) -> None:
-        try:
+        with contextlib.suppress(OSError):
             self._cache_file(digest).write_text(
                 json.dumps(payload, indent=2), encoding="utf-8")
-        except OSError:
-            pass
 
     # -- transport ---------------------------------------------------------
     @staticmethod
@@ -455,7 +462,7 @@ class LiveDetector:
             return {"Authorization": key}
         return {"Authorization": "Bearer " + key, "X-API-Key": key}
 
-    def _query(self, extra: dict = None) -> str:
+    def _query(self, extra: dict | None = None) -> str:
         """Query string shared by analyze and status."""
         params = {}
         if config.HS_DETAIL:
@@ -568,25 +575,35 @@ class LiveDetector:
         """
         self._throttle()
         try:
-            with http.urlopen(req, timeout=config.HS_TIMEOUT_S) as resp:
+            with net.urlopen(req, timeout=config.HS_TIMEOUT_S) as resp:
                 raw = resp.read().decode("utf-8", errors="replace")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:400]
-            if exc.code == 429:
+            if exc.code == HTTP_TOO_MANY_REQUESTS:
                 # Respect Retry-After when they send one, then let the caller
                 # retry rather than sleeping inside a request.
                 wait = exc.headers.get("Retry-After") if exc.headers else None
                 try:
-                    time.sleep(min(30.0, float(wait)))
+                    time.sleep(min(MAX_RETRY_AFTER_S, float(wait)))
                 except (TypeError, ValueError):
-                    time.sleep(5.0)
-            raise RuntimeError("HumanStandard API %s: %s" % (exc.code, detail))
+                    time.sleep(FALLBACK_RETRY_AFTER_S)
+            raise RuntimeError(
+                "HumanStandard API %s: %s" % (exc.code, detail)) from exc
         except Exception as exc:
-            raise RuntimeError("HumanStandard API unreachable: %s" % exc)
+            raise RuntimeError(
+                "HumanStandard API unreachable: %s" % exc) from exc
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
-            raise RuntimeError("Non-JSON response: " + raw[:300])
+            raise RuntimeError("Non-JSON response: " + raw[:300]) from None
+
+
+# Hash buckets the mock detector uses to land a file in each tier. These
+# are arbitrary by design -- the scores are fabricated and say so.
+_PERCENT_BUCKETS = 100
+_MOCK_CONFIDENT_AI = 78
+_MOCK_LIKELY_AI = 62
+_MOCK_BORDERLINE = 40
 
 
 class MockDetector:
@@ -602,7 +619,7 @@ class MockDetector:
     name = "mock"
     is_mock = True
 
-    def __init__(self, budget: Optional[Budget] = None) -> None:
+    def __init__(self, budget: Budget | None = None) -> None:
         self.budget = budget
 
     def is_cached(self, digest: str) -> bool:
@@ -625,17 +642,17 @@ class MockDetector:
         if self.budget:
             self.budget.spend()
 
-        bucket = int(digest[:8], 16) % 100
+        bucket = int(digest[:8], 16) % _PERCENT_BUCKETS
 
         # Shape the fixture like a real response, including tier_verdicts.
         # Without them every local run would exercise the score-band fallback
         # and the calibrated path -- the one that actually ships -- would be
         # covered only by unit tests. The numbers remain fabricated.
-        if bucket > 78:
+        if bucket > _MOCK_CONFIDENT_AI:
             verdict, tiers = "ai", ("ai", "ai", "ai")
-        elif bucket > 62:
+        elif bucket > _MOCK_LIKELY_AI:
             verdict, tiers = "ai", ("uncertain", "ai", "ai")
-        elif bucket > 40:
+        elif bucket > _MOCK_BORDERLINE:
             verdict, tiers = "uncertain", ("uncertain", "human", "ai")
         else:
             verdict, tiers = "human", ("human", "human", "human")
@@ -645,7 +662,8 @@ class MockDetector:
             confidence=0.75, provider=self.name, sha256=digest,
             verdict=verdict,
             tier_verdicts=dict(zip(
-                ("press_safe", "human_safe", "recall"), tiers)),
+                ("press_safe", "human_safe", "recall"), tiers,
+                strict=True)),
             origin="suno" if verdict == "ai" else "",
             origin_summary=("fabricated attribution, not a real detection"
                             if verdict == "ai" else ""),
@@ -653,7 +671,7 @@ class MockDetector:
         )
 
 
-def get_detector(force_mock: bool = False, budget: Optional[Budget] = None):
+def get_detector(force_mock: bool = False, budget: Budget | None = None):
     """Live whenever a key exists. Mock only when asked for, or when there is
     no key at all — and it is loud about it either way."""
     if force_mock or not config.HS_API_KEY:
@@ -661,8 +679,11 @@ def get_detector(force_mock: bool = False, budget: Optional[Budget] = None):
     return LiveDetector(budget=budget)
 
 
+# argv[0] is the module; argv[1] is the audio file this expects.
+_ARGV_WITH_AUDIO = 2
+
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
+    if len(sys.argv) < _ARGV_WITH_AUDIO:
         print("usage: python3 -m catalog_audit.detector <audio-file>")
         raise SystemExit(2)
 

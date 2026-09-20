@@ -33,13 +33,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from catalog_audit import config                                    # noqa: E402
-from catalog_audit.detector import (LiveDetector, map_response,     # noqa: E402
-                                    parse_result)
+from catalog_audit import config, net  # noqa: E402
+from catalog_audit.detector import (  # noqa: E402
+    LiveDetector,
+    map_response,
+    parse_result,
+)
+from catalog_audit.models import TrackScore  # noqa: E402
+from catalog_audit.tiering import classify  # noqa: E402
 
 # The four fixtures HumanStandard publishes. "suspicious" is the one this tool
 # cares most about: it is the mid-band case that should land in review rather
 # than on either side of it.
+HTTP_FORBIDDEN = 403
+HTTP_NOT_FOUND = 404
+
 SCENARIOS = ["human", "ai", "suspicious"]
 
 OK, BAD, WARN = "  [ok] ", "  [!!] ", "  [--] "
@@ -72,7 +80,7 @@ def check_key() -> bool:
         req.add_header(k, v)
 
     try:
-        with http.urlopen(req, timeout=30) as resp:
+        with net.urlopen(req, timeout=30) as resp:
             code, body = resp.status, resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as exc:
         code = exc.code
@@ -82,16 +90,16 @@ def check_key() -> bool:
         print("       Check HS_API_BASE in .env.")
         return False
 
-    if code == 403 and "1010" in body:
+    if code == HTTP_FORBIDDEN and "1010" in body:
         print(BAD + "403 error code 1010 -- Cloudflare rejected the client "
                     "signature, not the key.")
         print("       Set HS_USER_AGENT in .env to any real identifier.")
         return False
-    if code in (401, 403):
+    if code in (401, HTTP_FORBIDDEN):
         print(BAD + "%s -- the key was rejected: %s" % (code, _short(body)))
         print("       Check the key, and that HS_AUTH_STYLE is 'bearer'.")
         return False
-    if code == 404:
+    if code == HTTP_NOT_FOUND:
         print(BAD + "404 -- wrong path. Check HS_DETECT_PATH in .env.")
         return False
 
@@ -111,9 +119,6 @@ def check_with_fixtures() -> bool:
     """
     print("\n[2] Full cycle against HumanStandard's ?mock= fixtures "
           "(no credits)")
-
-    from catalog_audit.tiering import classify
-    from catalog_audit.models import TrackScore
 
     original = config.HS_MOCK_SCENARIO
     all_ok = True

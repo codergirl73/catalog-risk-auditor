@@ -71,10 +71,10 @@ if __name__ == "__main__":
 
 def tiered(press, human_safe, recall, **kw):
     """A score carrying HumanStandard's three calibrated operating points."""
-    base = dict(filename="t.mp3", path="t.mp3", ai_score=50.0,
-                confidence=0.9, provider="humanstandard",
-                tier_verdicts={"press_safe": press, "human_safe": human_safe,
-                               "recall": recall})
+    base = {"filename": "t.mp3", "path": "t.mp3", "ai_score": 50.0,
+            "confidence": 0.9, "provider": "humanstandard",
+            "tier_verdicts": {"press_safe": press, "human_safe": human_safe,
+                              "recall": recall}}
     base.update(kw)
     return TrackScore(**base)
 
@@ -165,9 +165,9 @@ class TestReviewerEvidence(unittest.TestCase):
 
 def verdicted(verdict, confidence=0.95, **kw):
     """A score shaped like a real live response: verdict, no tier_verdicts."""
-    base = dict(filename="t.mp3", path="t.mp3", ai_score=50.0,
-                confidence=confidence, provider="humanstandard",
-                verdict=verdict)
+    base = {"filename": "t.mp3", "path": "t.mp3", "ai_score": 50.0,
+            "confidence": confidence, "provider": "humanstandard",
+            "verdict": verdict}
     base.update(kw)
     return TrackScore(**base)
 
@@ -233,10 +233,10 @@ class TestHeadlineVersusOperatingPoint(unittest.TestCase):
     acquirable base, which is the exact failure this tool exists to prevent.
     """
 
-    OBSERVED = dict(verdict="human", confidence=0.2939,
-                    tier_verdicts={"press_safe": "human", "human_safe": "ai",
-                                   "recall": "ai"},
-                    origin="human")
+    OBSERVED = {"verdict": "human", "confidence": 0.2939,
+                "tier_verdicts": {"press_safe": "human", "human_safe": "ai",
+                                  "recall": "ai"},
+                "origin": "human"}
 
     def observed(self):
         return TrackScore(filename="udio.mp3", path="udio.mp3", ai_score=70.6,

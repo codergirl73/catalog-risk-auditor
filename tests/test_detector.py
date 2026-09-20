@@ -6,14 +6,19 @@ handle -- and against one it does not, because failing loudly beats inventing
 a score.
 """
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from catalog_audit import config
-from catalog_audit.detector import (LiveDetector, MockDetector, get_detector,
-                                    map_response, parse_result, sha256_file)
+from catalog_audit.detector import (
+    LiveDetector,
+    MockDetector,
+    get_detector,
+    map_response,
+    parse_result,
+    sha256_file,
+)
 from catalog_audit.models import Budget
 
 
@@ -105,8 +110,8 @@ class TestBudget(unittest.TestCase):
         self.assertTrue(all(not r.ok for r in results[2:]))
 
     def test_unscored_assets_are_errors_not_clean(self):
-        from catalog_audit.tiering import classify
         from catalog_audit.models import Tier
+        from catalog_audit.tiering import classify
         b = Budget(limit=0)
         result = MockDetector(budget=b).detect(self.audio)
         tier, reason = classify(result)
@@ -354,9 +359,8 @@ class TestRiskSegments(unittest.TestCase):
         self.assertAlmostEqual(risk, 0.4671)
 
     def test_real_tier_verdicts_drive_tiering(self):
-        from catalog_audit.models import TrackScore
+        from catalog_audit.models import Tier, TrackScore
         from catalog_audit.tiering import classify
-        from catalog_audit.models import Tier
         sc = TrackScore("x", "x", 0.9, 0.99, "hs", **parse_result(self.LIVE))
         tier, why = classify(sc)
         self.assertEqual(tier, Tier.CLEAN)

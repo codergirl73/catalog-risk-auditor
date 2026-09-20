@@ -38,7 +38,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from catalog_audit import http  # noqa: E402
+from catalog_audit import net  # noqa: E402
 
 DATASET = "awsaf49/sonics"
 LICENSE = "CC BY-NC 4.0"
@@ -49,6 +49,9 @@ PARTS = ["fake_songs/part_%02d.zip" % i for i in range(1, 11)]
 
 USER_AGENT = ("catalog-risk-auditor/0.1 "
               "(+https://github.com/codergirl73/catalog-risk-auditor)")
+# Directory blocks are the hot ones; member blocks stream past once.
+MAX_CACHED_BLOCKS = 64
+
 AUDIO_EXT = {".mp3", ".wav", ".flac", ".m4a", ".ogg"}
 
 
@@ -71,12 +74,12 @@ class HTTPRangeFile(io.RawIOBase):
 
     def _open(self, headers: dict):
         req = urllib.request.Request(self.url, headers=headers)
-        return http.urlopen(req, timeout=90)
+        return net.urlopen(req, timeout=90)
 
     def _length(self) -> int:
         req = urllib.request.Request(
             self.url, headers={"User-Agent": USER_AGENT}, method="HEAD")
-        with http.urlopen(req, timeout=60) as resp:
+        with net.urlopen(req, timeout=60) as resp:
             if resp.headers.get("Accept-Ranges") != "bytes":
                 raise RuntimeError("server will not serve byte ranges")
             return int(resp.headers["Content-Length"])
@@ -93,7 +96,7 @@ class HTTPRangeFile(io.RawIOBase):
             data = resp.read()
         # Keep the cache small; the directory blocks are the hot ones and the
         # member blocks are read once and streamed straight out.
-        if len(self._cache) > 64:
+        if len(self._cache) > MAX_CACHED_BLOCKS:
             self._cache.clear()
         self._cache[index] = data
         return data

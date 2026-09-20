@@ -181,9 +181,8 @@ class TestApiMockPropagation(CatalogFixture):
                 return False
 
             def detect(self, path, digest=""):
-                from pathlib import Path as P
                 return TrackScore(
-                    filename=P(path).name, path=str(path), ai_score=95.0,
+                    filename=Path(path).name, path=str(path), ai_score=95.0,
                     confidence=0.9, provider=self.name, verdict="ai",
                     mock=True, mock_scenario="ai",
                 )

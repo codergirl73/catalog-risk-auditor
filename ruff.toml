@@ -1,0 +1,62 @@
+# Lint configuration. Ruff is a development tool, not a runtime dependency --
+# the project still installs nothing to run. Deliberately NOT pyproject.toml,
+# because CI asserts that file's absence as part of the zero-dependency claim.
+
+target-version = "py310"
+line-length = 88
+
+[lint]
+select = [
+    "E", "W",    # pycodestyle
+    "F",         # pyflakes
+    "I",         # import ordering
+    "N",         # pep8 naming
+    "UP",        # pyupgrade
+    "B",         # bugbear
+    "A",         # shadowed builtins
+    "C4",        # comprehensions
+    "SIM",       # simplify
+    "RET",       # returns
+    "PTH",       # pathlib
+    "PL",        # pylint
+    "RUF",       # ruff-specific
+    "S",         # bandit-equivalent security rules
+]
+
+ignore = [
+    # Long lines are wrapped by hand to keep prose comments readable; the
+    # formatter would reflow them into something worse.
+    "E501",
+    # %-formatting is the house style throughout, applied consistently. It is
+    # not a defect, and converting ~170 call sites carries more risk than the
+    # readability gain is worth on a codebase this size.
+    "UP031", "UP032",
+    # Dataclass fields legitimately default to mutable factories.
+    "RUF012",
+    # The memo is assembled from trusted literals and escaped values; the
+    # escaping is covered by its own tests.
+    "S308",
+    # S310 asks that URL schemes be audited before opening. They are, in one
+    # place: catalog_audit/net.py pins the scheme to https and is the only
+    # module permitted to open a socket. tests/test_net.py walks the source
+    # and fails if any other module calls urllib.request.urlopen, which is a
+    # stronger guarantee than nine per-call suppressions would express. Ruff
+    # also raises S310 on Request() construction, which opens nothing.
+    "S310",
+]
+
+[lint.per-file-ignores]
+# Tests import inside functions to keep fixtures local, assert freely, and
+# construct throwaway objects.
+"tests/*" = ["S101", "PLC0415", "PLR2004", "ARG002"]
+# Scripts are operational entrypoints: printing and a main() that reads as a
+# procedure are the point.
+"scripts/*" = ["PLR0912", "PLR0915", "T201"]
+
+[lint.pylint]
+max-args = 7
+max-branches = 12
+max-statements = 50
+# _by_verdict returns one message per verdict value. Seven short, flat returns
+# read better here than a lookup table that has to reassemble the message.
+max-returns = 8

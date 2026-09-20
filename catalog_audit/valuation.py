@@ -12,7 +12,7 @@ import csv
 from pathlib import Path
 
 from . import config
-from .models import Asset, Royalty, Tier, Valuation
+from .models import Royalty, Tier, Valuation
 
 
 def load_royalties(csv_path) -> dict:
@@ -56,8 +56,8 @@ def attach_royalties(assets: list, royalties: dict) -> int:
     return matched
 
 
-def value(assets: list, multiple: float = None,
-          asking_price_usd: float = None) -> Valuation:
+def value(assets: list, multiple: float | None = None,
+          asking_price_usd: float | None = None) -> Valuation:
     """Compute exposure and a recommended escrow.
 
     Suspect revenue is held back in full: those assets may carry no

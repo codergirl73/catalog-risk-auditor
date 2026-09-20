@@ -6,8 +6,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
+    name: tests (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -20,14 +24,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Confirm the dependency tree is empty
+      - name: Confirm the runtime dependency tree is empty
         # The project's central claim is that it needs nothing but the
-        # standard library. Assert it rather than trusting it: pip install
-        # is never run, so anything imported must already be in the stdlib.
+        # standard library. Assert it rather than trusting it: pip install is
+        # never run, so anything imported must already be in the stdlib.
         run: |
           python -c "import catalog_audit, catalog_audit.agent, catalog_audit.cli"
           test ! -f requirements.txt || (echo "requirements.txt appeared" && exit 1)
           test ! -f pyproject.toml   || (echo "pyproject.toml appeared" && exit 1)
+          test ! -f setup.py         || (echo "setup.py appeared" && exit 1)
+          test ! -f Pipfile          || (echo "Pipfile appeared" && exit 1)
+          test ! -f poetry.lock      || (echo "poetry.lock appeared" && exit 1)
 
       - name: Run the test suite
         run: python -m unittest discover -s tests -v
@@ -42,3 +49,35 @@ jobs:
                 out/api_evidence.json
             grep -q 'redacted' out/api_evidence.json
           fi
+
+  quality:
+    name: lint, security and complexity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install analysis tools
+        # Development tooling only. None of this is imported at runtime, and
+        # the job above proves the runtime tree is still empty.
+        run: pip install --disable-pip-version-check ruff bandit radon
+
+      - name: Lint
+        run: ruff check catalog_audit scripts tests
+
+      - name: Security scan
+        # Any finding at all fails the build. The one reviewed false positive
+        # carries an inline nosec with its justification.
+        run: bandit -r catalog_audit scripts -ll -q
+
+      - name: Refuse cyclomatic complexity of D or worse
+        run: |
+          radon cc catalog_audit scripts -n D --total-average
+          test -z "$(radon cc catalog_audit scripts -n D -s | grep -E '^\s+[FCM] ')" \
+            || (echo "A function scored D or worse. Split it." && exit 1)
+
+      - name: Report maintainability
+        run: radon mi catalog_audit scripts -s

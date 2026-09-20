@@ -3,8 +3,15 @@
 import unittest
 
 from catalog_audit import memo
-from catalog_audit.models import (Asset, AuditResult, Evaluation, Royalty,
-                                  Tier, TrackScore, Valuation)
+from catalog_audit.models import (
+    Asset,
+    AuditResult,
+    Evaluation,
+    Royalty,
+    Tier,
+    TrackScore,
+    Valuation,
+)
 
 
 def asset(name, ai, usd, tier, truth=""):
@@ -23,7 +30,7 @@ def result(mock=False, assets=None):
         asset("grey.mp3", 45, 200.0, Tier.CONTESTED, "ai"),
         asset("fake.mp3", 95, 50.0, Tier.SUSPECT, "ai"),
     ]
-    r = AuditResult(catalog_name="Test Catalog", catalog_dir="/tmp",
+    r = AuditResult(catalog_name="Test Catalog", catalog_dir="catalog",
                     assets=assets, provider="test", mock_mode=mock)
     r.valuation = Valuation(
         track_count=len(assets), annual_revenue_usd=1250.0, multiple=15.0,
@@ -41,13 +48,13 @@ def result(mock=False, assets=None):
 
 class TestMockGate(unittest.TestCase):
     def test_mock_run_refuses_to_render(self):
-        with self.assertRaises(memo.MockModeRefused):
+        with self.assertRaises(memo.MockModeRefusedError):
             memo.render(result(mock=True))
 
     def test_refusal_names_the_override(self):
         try:
             memo.render(result(mock=True))
-        except memo.MockModeRefused as exc:
+        except memo.MockModeRefusedError as exc:
             self.assertIn("--allow-mock", str(exc))
 
     def test_override_renders_but_marks_the_document(self):

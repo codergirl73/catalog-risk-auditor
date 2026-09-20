@@ -17,7 +17,7 @@ from .models import AuditResult, Tier
 from .valuation import headline
 
 
-class MockModeRefused(Exception):
+class MockModeRefusedError(Exception):
     """Raised rather than quietly producing a memo full of fake numbers."""
 
 
@@ -116,7 +116,7 @@ def _bar(parts, y, width=720.0, height=30.0) -> str:
             '<title>%s: %s (%.1f%%)</title></rect>'
             % (x, y, w, height, _FILL.get(label, "#999"),
                html.escape(label), html.escape(str(value)), share * 100))
-        if w > 52:
+        if w > SEGMENT_LABEL_MIN_PX:
             out.append(
                 '<text x="%.1f" y="%.1f" fill="#fff" font-size="12" '
                 'font-weight="600" text-anchor="middle" '
@@ -303,7 +303,14 @@ def _industry_label_section(assets) -> str:
 
 # How much of the catalog the memo tabulates before deferring to audit.json.
 MAX_ASSET_ROWS = 60
+
+# Narrower than this and a percentage label will not fit inside the bar.
+SEGMENT_LABEL_MIN_PX = 52
 MAX_REVIEW_ROWS = 40
+
+# Column widths, so a long title cannot break the table layout.
+TITLE_CHARS = 52
+ARTIST_CHARS = 28
 
 # Populations the API names when it is *not* attributing to a generator.
 _NOT_A_GENERATOR = frozenset({"human", "uncertain", "unknown", "none"})
@@ -413,7 +420,7 @@ def _asset_rows(result: AuditResult) -> tuple:
         rows.append(
             "<tr><td>%s</td><td>%s</td><td class='n'>%s</td>"
             "<td class='n'>$%s</td><td>%s %s</td></tr>"
-            % (e(title[:52]), e(artist[:28]), score,
+            % (e(title[:TITLE_CHARS]), e(artist[:ARTIST_CHARS]), score,
                f"{asset.annual_usd:,.0f}", _tier_pill(asset.tier),
                _generator_tag(asset))
         )
@@ -450,7 +457,7 @@ def _review_section(result: AuditResult) -> str:
         rows.append(
             "<tr><td>%s</td><td class='n'>%s</td><td class='n'>$%s</td>"
             "<td>%s</td></tr>"
-            % (e(item["filename"][:52]), score,
+            % (e(item["filename"][:TITLE_CHARS]), score,
                f"{item['annual_usd']:,.0f}", reason)
         )
 
@@ -507,7 +514,7 @@ def render(result: AuditResult, allow_mock: bool = False) -> str:
     accident.
     """
     if result.mock_mode and not allow_mock:
-        raise MockModeRefused(
+        raise MockModeRefusedError(
             "This run used the mock detector, so every score is fabricated. "
             "Set HS_API_KEY and re-run, or pass --allow-mock if you genuinely "
             "want a memo built on meaningless numbers."

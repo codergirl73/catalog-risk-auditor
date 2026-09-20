@@ -9,7 +9,7 @@ from __future__ import annotations
 import time
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class Tier(str, Enum):
@@ -115,8 +115,8 @@ class Asset:
     """A track plus everything the audit learned about it."""
 
     filename: str
-    score: Optional[TrackScore] = None
-    royalty: Optional[Royalty] = None
+    score: TrackScore | None = None
+    royalty: Royalty | None = None
     tier: Tier = Tier.ERROR
     truth: str = ""            # "human" | "ai" | "" when unlabelled
     true_origin: str = ""      # the generator that actually made it, if known
@@ -191,12 +191,12 @@ class Evaluation:
                 if self.origin_labelled else None)
 
     @property
-    def precision(self) -> Optional[float]:
+    def precision(self) -> float | None:
         d = self.true_positive + self.false_positive
         return self.true_positive / d if d else None
 
     @property
-    def recall(self) -> Optional[float]:
+    def recall(self) -> float | None:
         d = self.true_positive + self.false_negative
         return self.true_positive / d if d else None
 
@@ -208,12 +208,12 @@ class AuditResult:
     catalog_name: str
     catalog_dir: str
     assets: list = field(default_factory=list)
-    valuation: Optional[Valuation] = None
-    evaluation: Optional[Evaluation] = None
+    valuation: Valuation | None = None
+    evaluation: Evaluation | None = None
     review_queue: list = field(default_factory=list)
     provider: str = ""
     mock_mode: bool = False
-    budget: Optional[Budget] = None
+    budget: Budget | None = None
     manifest_sha256: str = ""
     generated_at: float = field(default_factory=time.time)
 

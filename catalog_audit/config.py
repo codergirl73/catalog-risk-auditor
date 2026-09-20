@@ -21,8 +21,8 @@ def _load_dotenv() -> None:
         lines = env_path.read_text(encoding="utf-8").splitlines()
     except OSError:
         return
-    for line in lines:
-        line = line.strip()
+    for raw in lines:
+        line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, val = line.partition("=")
@@ -155,15 +155,20 @@ def budget_summary(needed: int) -> str:
 # magnitude, which is worse than not estimating at all.
 SECONDS_PER_TRACK = _f("HS_SECONDS_PER_TRACK", 45.0)
 
+# Where the runtime estimate switches units, so it reads like a person
+# would say it rather than "0.6 hours".
+_MINUTES_FOR_A_COUPLE = 2
+_MINUTES_BEFORE_HOURS = 90
+
 
 def runtime_estimate(needed: int) -> str:
     """Roughly how long `needed` live analyses will take, and why."""
     if needed <= 0:
         return "nothing to score; every asset is already cached"
     minutes = needed * SECONDS_PER_TRACK / 60.0
-    if minutes < 2:
+    if minutes < _MINUTES_FOR_A_COUPLE:
         pretty = "a couple of minutes"
-    elif minutes < 90:
+    elif minutes < _MINUTES_BEFORE_HOURS:
         pretty = "roughly %d minutes" % round(minutes)
     else:
         pretty = "roughly %.1f hours" % (minutes / 60.0)

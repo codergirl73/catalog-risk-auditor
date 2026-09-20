@@ -27,18 +27,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from catalog_audit import http  # noqa: E402
+from catalog_audit import net  # noqa: E402
+
 SEARCH_URL = "https://archive.org/advancedsearch.php"
 METADATA_URL = "https://archive.org/metadata/"
 DOWNLOAD_URL = "https://archive.org/download/"
 
 USER_AGENT = "catalog-risk-auditor/0.1 (hackathon project; contact via repo)"
+# Anything smaller is an intro sting or a download artefact, not a track.
+MIN_TRACK_BYTES = 200_000
+
 AUDIO_FORMATS = ("VBR MP3", "128Kbps MP3", "64Kbps MP3", "MP3")
 
 
 def _get_json(url: str, timeout: float = 30.0) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with http.urlopen(req, timeout=timeout) as resp:
+    with net.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8", errors="replace"))
 
 
@@ -82,7 +86,7 @@ def item_tracks(identifier: str, per_item: int) -> list:
             size = int(f.get("size") or 0)
         except (TypeError, ValueError):
             size = 0
-        if size < 200_000:            # skip clips and artefacts
+        if size < MIN_TRACK_BYTES:    # skip clips and artefacts
             continue
         picked.append({
             "identifier": identifier,
@@ -114,7 +118,7 @@ def download(track: dict, dest_dir: Path) -> Path | None:
     url = DOWNLOAD_URL + track["identifier"] + "/" + urllib.parse.quote(track["name"])
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with http.urlopen(req, timeout=90) as resp, open(out, "wb") as fh:
+        with net.urlopen(req, timeout=90) as resp, out.open("wb") as fh:
             while True:
                 chunk = resp.read(1 << 16)
                 if not chunk:

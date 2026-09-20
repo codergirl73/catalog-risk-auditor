@@ -14,7 +14,10 @@ exactly the case a person should hear.
 from __future__ import annotations
 
 from . import config
-from .models import Asset, Tier, TrackScore
+from .models import Tier, TrackScore
+
+# Below this, a risk peak is not worth sending a reviewer to a timestamp for.
+REPORTABLE_PEAK_RISK = 0.6
 
 
 def _timestamp(seconds: float) -> str:
@@ -42,7 +45,7 @@ def _evidence(score: TrackScore) -> str:
             bits.append("Attributed to %s (%.0f%% confidence)."
                         % (score.origin.title(), score.origin_confidence * 100))
     at, peak = score.peak_risk
-    if at >= 0 and peak >= 0.6:
+    if at >= 0 and peak >= REPORTABLE_PEAK_RISK:
         bits.append("Risk peaks at %.0f%% from %s."
                     % (peak * 100, _timestamp(at)))
     return " " + " ".join(bits) if bits else ""
@@ -249,7 +252,7 @@ def apply(assets: list) -> list:
 
 
 def counts(assets: list) -> dict:
-    out = {t: 0 for t in Tier}
+    out = dict.fromkeys(Tier, 0)
     for a in assets:
         out[a.tier] = out.get(a.tier, 0) + 1
     return out

@@ -15,7 +15,7 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
-from .models import Asset, Evaluation, Tier
+from .models import Evaluation, Tier
 
 # Below this many planted AI tracks, precision and recall are reported with an
 # explicit caveat rather than as if they were measurements.
@@ -66,7 +66,8 @@ def load_origins(csv_path) -> dict:
     return out
 
 
-def attach(assets: list, truth: dict, origins: dict = None) -> int:
+def attach(assets: list, truth: dict,
+           origins: dict | None = None) -> int:
     matched = 0
     origins = origins or {}
     for asset in assets:

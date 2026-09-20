@@ -9,7 +9,7 @@ once rather than being trusted in four places.
 import unittest
 import urllib.request
 
-from catalog_audit.http import ALLOWED_SCHEMES, UnsafeURLError, check_url
+from catalog_audit.net import ALLOWED_SCHEMES, UnsafeURLError, check_url
 
 
 class TestSchemeGuard(unittest.TestCase):
@@ -49,10 +49,10 @@ class TestSchemeGuard(unittest.TestCase):
 
 class TestRequestObjects(unittest.TestCase):
     def test_a_request_objects_url_is_what_gets_checked(self):
-        from catalog_audit import http
+        from catalog_audit import net
         req = urllib.request.Request("file:///etc/passwd")
         with self.assertRaises(UnsafeURLError):
-            http.urlopen(req, timeout=1)
+            net.urlopen(req, timeout=1)
 
     def test_long_urls_are_truncated_in_the_message(self):
         with self.assertRaises(UnsafeURLError) as ctx:
@@ -69,7 +69,7 @@ class TestNoDirectSocketCalls(unittest.TestCase):
         offenders = []
         for py in list((root / "catalog_audit").glob("*.py")) + \
                 list((root / "scripts").glob("*.py")):
-            if py.name == "http.py":
+            if py.name == "net.py":
                 continue
             if "urllib.request.urlopen" in py.read_text(encoding="utf-8"):
                 offenders.append(py.name)

@@ -9,7 +9,6 @@ from pathlib import Path
 
 from . import config, memo
 from .agent import AuditAgent
-from .models import AuditResult
 
 BOLD = "\033[1m"
 DIM = "\033[2m"
@@ -51,12 +50,83 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+class _Printer:
+    """Renders Events to a terminal.
+
+    One method per event type rather than one long chain of comparisons, so
+    adding an event type means adding a method and nothing else.
+    """
+
+    def __init__(self, colour: bool) -> None:
+        self.colour = colour
+
+    def paint(self, code: str, text: str) -> str:
+        return "%s%s%s" % (code, text, RESET) if self.colour else text
+
+    def plan(self, ev) -> None:
+        print(self.paint(BOLD, "Audit plan"))
+        for i, step in enumerate(ev.data["steps"], 1):
+            print(self.paint(DIM, "  %d. %s" % (i, step)))
+        print()
+
+    def step(self, ev) -> None:
+        print("\n%s" % self.paint(BOLD, "> " + ev.title))
+        if ev.detail:
+            print(self.paint(DIM, "  " + ev.detail))
+
+    def tool_call(self, ev) -> None:
+        print(self.paint(CYAN, "  -> %s" % ev.title),
+              self.paint(DIM, ev.detail))
+
+    def tool_result(self, ev) -> None:
+        print("    %s" % ev.detail)
+
+    def finding(self, ev) -> None:
+        print("\n%s" % self.paint(YELLOW + BOLD, "  * " + ev.title))
+        print("    %s" % ev.detail)
+
+    def verdict(self, ev) -> None:
+        print("\n%s" % self.paint(BOLD, "  " + ev.title))
+        print("    %s" % ev.detail)
+
+    def warn(self, ev) -> None:
+        print("\n%s" % self.paint(YELLOW, "  ! %s" % ev.title))
+        print(self.paint(YELLOW, "    %s" % ev.detail))
+
+    def error(self, ev) -> None:
+        print(self.paint(RED, "\n  x %s: %s" % (ev.title, ev.detail)))
+
+    def done(self, ev) -> None:
+        print("\n%s" % self.paint(GREEN, "  " + ev.title),
+              self.paint(DIM, ev.detail))
+
+    def show(self, ev) -> None:
+        handler = getattr(self, ev.type, None)
+        if handler is not None:
+            handler(ev)
+
+
+def _write_outputs(result, out: _Printer, allow_mock: bool,
+                   json_out: bool) -> None:
+    """The memo, and optionally the machine-readable record beside it."""
+    try:
+        path = memo.write(result, allow_mock=allow_mock)
+        print(out.paint(DIM, "\n  memo: %s" % path))
+    except memo.MockModeRefusedError as exc:
+        print(out.paint(YELLOW, "\n  memo not written: %s" % exc))
+
+    if json_out:
+        config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+        json_path = config.OUTPUT_DIR / "audit.json"
+        json_path.write_text(
+            json.dumps(result.to_dict(), indent=2, default=str),
+            encoding="utf-8")
+        print(out.paint(DIM, "  json: %s" % json_path))
+
+
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    colour = _supports_colour()
-
-    def c(code, text):
-        return "%s%s%s" % (code, text, RESET) if colour else text
+    out = _Printer(_supports_colour())
 
     catalog = Path(args.catalog)
     if not catalog.is_dir():
@@ -74,51 +144,14 @@ def main(argv=None) -> int:
         asking_price=args.asking_price,
         catalog_name=args.name,
     ):
-        if ev.type == "plan":
-            print(c(BOLD, "Audit plan"))
-            for i, step in enumerate(ev.data["steps"], 1):
-                print(c(DIM, "  %d. %s" % (i, step)))
-            print()
-        elif ev.type == "step":
-            print("\n%s" % c(BOLD, "> " + ev.title))
-            if ev.detail:
-                print(c(DIM, "  " + ev.detail))
-        elif ev.type == "tool_call":
-            print(c(CYAN, "  -> %s" % ev.title), c(DIM, ev.detail))
-        elif ev.type == "tool_result":
-            print("    %s" % ev.detail)
-        elif ev.type == "finding":
-            print("\n%s" % c(YELLOW + BOLD, "  * " + ev.title))
-            print("    %s" % ev.detail)
-        elif ev.type == "verdict":
-            print("\n%s" % c(BOLD, "  " + ev.title))
-            print("    %s" % ev.detail)
-        elif ev.type == "warn":
-            print("\n%s" % c(YELLOW, "  ! %s" % ev.title))
-            print(c(YELLOW, "    %s" % ev.detail))
-        elif ev.type == "error":
-            print(c(RED, "\n  x %s: %s" % (ev.title, ev.detail)))
+        out.show(ev)
+        if ev.type == "error":
             return 1
-        elif ev.type == "done":
-            print("\n%s" % c(GREEN, "  " + ev.title), c(DIM, ev.detail))
 
-    result = agent.result
-    if result is None:
+    if agent.result is None:
         return 1
 
-    try:
-        path = memo.write(result, allow_mock=args.allow_mock)
-        print(c(DIM, "\n  memo: %s" % path))
-    except memo.MockModeRefused as exc:
-        print(c(YELLOW, "\n  memo not written: %s" % exc))
-
-    if args.json_out:
-        config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        jpath = config.OUTPUT_DIR / "audit.json"
-        jpath.write_text(json.dumps(result.to_dict(), indent=2, default=str),
-                         encoding="utf-8")
-        print(c(DIM, "  json: %s" % jpath))
-
+    _write_outputs(agent.result, out, args.allow_mock, args.json_out)
     print()
     return 0
 

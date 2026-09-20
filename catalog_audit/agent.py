@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
-from typing import Optional
 
 from . import config, evaluation, tiering, valuation
 from .detector import get_detector, sha256_file
@@ -36,11 +35,11 @@ def _ev(type_, title="", detail="", **data) -> Event:
 
 class AuditAgent:
     def __init__(self, force_mock: bool = False,
-                 budget_limit: Optional[int] = None) -> None:
+                 budget_limit: int | None = None) -> None:
         limit = config.HS_CREDIT_BUDGET if budget_limit is None else budget_limit
         self.budget = Budget(limit=limit)
         self.detector = get_detector(force_mock=force_mock, budget=self.budget)
-        self.result: Optional[AuditResult] = None
+        self.result: AuditResult | None = None
         # Products of the steps, shared between them in PLAN order.
         self._digests: dict = {}
         self._assets: list = []

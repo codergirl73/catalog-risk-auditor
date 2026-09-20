@@ -60,7 +60,7 @@ class TestValue(unittest.TestCase):
         self.assertEqual(v.suspect_share_by_count, 0.0)
 
     def test_assets_without_revenue_contribute_nothing(self):
-        assets = self.assets + [Asset(filename="z", tier=Tier.SUSPECT)]
+        assets = [*self.assets, Asset(filename="z", tier=Tier.SUSPECT)]
         v = value(assets, multiple=10.0)
         self.assertEqual(v.suspect_revenue_usd, 10_000)
         self.assertEqual(v.suspect_count, 3)
