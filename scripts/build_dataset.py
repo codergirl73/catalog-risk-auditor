@@ -133,6 +133,20 @@ def main(argv=None) -> int:
     print("catalog: %d tracks (%d human, %d ai)" % (len(rows), human, ai))
     print("planted AI share: %.1f%% by count, %.1f%% by revenue"
           % (100.0 * ai / len(rows), 100.0 * ai_rev / total if total else 0.0))
+
+    if not ai:
+        print()
+        print("  ! No AI tracks found in %s/ai" % catalog)
+        print("  ! The audit will run, but with nothing planted there is no")
+        print("  ! precision or recall to report and no suspect tier to show.")
+        print("  ! Generate a few tracks (Suno, Udio, anything), drop the")
+        print("  ! files in %s/ai and run this again." % catalog)
+    elif ai < 5:
+        print()
+        print("  ! Only %d AI track%s planted. Accuracy figures on a sample"
+              % (ai, "" if ai == 1 else "s"))
+        print("  ! that small are indicative, not measurements -- the memo")
+        print("  ! reports the counts, so say so rather than quoting a rate.")
     print("ground truth: %s" % truth_path)
     print("royalties:    %s" % roy_path)
     print("\nNext:")
