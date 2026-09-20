@@ -1,70 +1,254 @@
 # Submission notes
 
-Fill the `[ ]` placeholders from a real run before submitting.
+Three tracks, one project, one repository:
+**HumanStandard** · **The Code Registry** · **Open Track / Bring Your Own Project**
+
+Repository: https://github.com/codergirl73/catalog-risk-auditor
+
+Placeholders marked `[ ]` are filled from the real run. Do not fill them from a
+mock run — `memo.py` refuses to render one, and that refusal is the point.
 
 ---
 
-## Devpost requirements (HumanStandard track)
+## The pitch, in one paragraph
 
-- [ ] Public code repository link
-- [ ] Demo video, 3 minutes or less, end to end
-- [ ] Written description: the problem and the intended industry user
-- [ ] Explanation of how the project integrates the HumanStandard API and
-      processes its results
-- [ ] Evidence of at least one real API call (screenshot or log)
-- [ ] Every team member listed
+A buyer pays a multiple of annual royalties for a music catalog. Diligence
+verifies ownership, disputes, uncleared samples and revenue stability. Nobody
+verifies that a human made the recordings. With AI material exceeding half of
+daily uploads on some platforms, a recently assembled catalog can contain
+tracks that may carry no enforceable copyright and whose income a platform can
+switch off by policy. This agent audits the catalog before the wire goes out
+and returns the number the buyer negotiates with: a recommended escrow.
 
 ---
 
-## Problem and intended user
+# Track 1 — HumanStandard
 
-**User:** a catalog acquisition analyst at a music rights fund, publisher or
-label — the person who runs due diligence before the fund wires money.
+### Requirements checklist
+
+- [x] Public code repository — https://github.com/codergirl73/catalog-risk-auditor
+- [ ] Demo video, 3 minutes or less
+- [x] Written problem description and target music industry user — below
+- [x] Explanation of API integration and how verdicts are used — below
+- [ ] Evidence of at least one real API call — `out/api_evidence.json`,
+      produced by `scripts/probe_api.py --upload`
+- [ ] All team members listed — solo
+- [ ] **Opt in to the HumanStandard prize on the Devpost form** (a checkbox;
+      it is not automatic)
+
+### Problem and intended user
+
+**User:** the catalog acquisition analyst at a music rights fund, publisher or
+label — the person who runs diligence before the fund wires money. Secondary:
+the distributor deciding whether to onboard a back catalogue.
 
 **Problem:** catalogs are priced at a multiple of annual royalties. Diligence
-verifies ownership chain, disputes, uncleared samples and revenue stability. It
-does not verify that a human made the recordings. With AI uploads exceeding
-half of daily new music on some platforms, a recently assembled catalog can
-carry material that (a) may not be protectable under US copyright, (b) can be
-demonetised by platform policy, and (c) may show streaming revenue that was
-never real. The buyer finds out after closing.
+covers chain of title, disputes, uncleared samples and revenue durability. It
+does not cover whether a person made the recordings. That gap matters three
+ways, and they compound:
+
+1. **Ownership.** Work without meaningful human authorship is not protectable
+   under US copyright. Part of the catalog may not be ownable at all.
+2. **Monetisation.** Platforms are demonetising synthetic content. Income the
+   seller reports as recurring can be switched off by a policy change.
+3. **Revenue quality.** Where synthetic uploads are paired with stream fraud,
+   the reported income was never real to begin with.
+
+The buyer finds out after closing, when the price is already paid.
+
+### How the HumanStandard API is integrated
+
+Every asset is submitted to the HumanStandard detection endpoint
+(`catalog_audit/detector.py`). Responses are normalised by `map_response()`
+into a score and the detector's own confidence, then cached on disk keyed by
+SHA-256 of the file, so a catalog is scored once and analysed many times.
+
+**The API result is not the output. It is one input to a decision:**
+
+1. **Score and confidence are read separately.** A high score with low
+   confidence is not treated as a finding. Anything under `MIN_CONFIDENCE` is
+   forced into the contested band whatever it scored.
+2. **Assets are tiered against stated, printable thresholds** — clean under
+   25, suspect over 65, contested between. The thresholds print on every run,
+   because a stated threshold can be argued with and a hidden one can only be
+   trusted.
+3. **The contested band is escalated, not resolved.** Each entry carries the
+   reason it could not be settled from audio.
+4. **Tier decisions are joined to the seller's revenue sheet.** This is where
+   a detection result becomes a price.
+5. **The agent's own accuracy is measured and reported** against planted
+   ground-truth labels, by name.
+
+`map_response()` handles HumanStandard's synthetic / human / hybrid classes.
+A **hybrid** verdict maps into the contested band by design, and there is a
+test asserting it lands on neither side of it — a track that is partly
+synthetic is exactly the case a human has to listen to.
+
+### How verdicts are communicated
+
+Honestly, and with the uncertainty left in:
+
+- Three tiers, not two. The agent declines to call what it cannot settle.
+- Every escalation carries its reason in plain language.
+- Detection failures are excluded from the clean base, never assumed safe.
+- Assets left unscored because the call budget ran out are reported as
+  unscored — an asset nobody paid to check is not an asset anybody verified.
+- A mock run cannot produce a memo. `memo.render()` raises `MockModeRefused`
+  rather than putting invented numbers in front of a buyer.
 
 ---
 
-## How the HumanStandard API is integrated
+# Track 2 — The Code Registry
 
-Every audio asset in the catalog is submitted to the HumanStandard detection
-endpoint. Responses are mapped to a normalised score and the detector's own
-confidence, then cached on disk keyed by SHA-256 of the file so a catalog is
-scored once and analysed many times.
+Scored on Code Score across **security, dependencies and quality**.
 
-The API result is not the output. It is one input to a decision:
+- [x] Public repository (private repos cannot be analysed)
+- [ ] Registered, project created, **repository sync started before 18:00**
+- [ ] Team name, repo URL and Code Registry account email logged at the
+      sponsor table before leaving
+- [x] `python3 -m unittest discover -s tests` passes — 73 tests
+- [x] `.env` never committed; CI fails the build if one appears
 
-1. Score and confidence are read separately. A high score with low confidence
-   is not treated as a finding.
-2. Assets are tiered against stated, printable thresholds.
-3. Anything in the contested band, or below the confidence floor, is escalated
-   to a human review queue with the reason recorded.
-4. Tier decisions are joined to the seller's revenue sheet, which is where the
-   result becomes a price.
-5. Where the catalog carries ground-truth labels, the agent's own accuracy is
-   measured and reported alongside the finding.
+### Dependencies
+
+The dependency tree is **empty**. No `requirements.txt`, no `pyproject.toml`,
+no lockfile, no virtualenv. Only the standard library: `urllib.request`,
+`csv`, `hashlib`, `json`, `dataclasses`, `argparse`.
+
+This is not minimalism for its own sake — an empty dependency tree cannot
+carry a transitive vulnerability and has no install-time code execution to
+audit. **CI asserts it on every push** rather than leaving it as a README
+claim.
+
+### Security
+
+Full detail in [SECURITY.md](SECURITY.md). Summary:
+
+- API key read from env or a gitignored `.env`; never written to disk, never
+  in `audit.json`, never in the memo. The evidence file records which auth
+  *style* worked, not the key.
+- One thing leaves the machine: audio, over HTTPS, to the detection endpoint.
+  Royalties, labels, valuation and memo stay local.
+- Memo output is HTML-escaped throughout, with a test that feeds it hostile
+  filenames and asserts no script survives.
+- Bounded retries; 400/401/403/415 are not retried.
+- Spending guardrails: credit budget, upload ceiling, response caching.
+
+### Quality
+
+- 73 unit and integration tests, no test framework required — `unittest` only.
+- CI on Python 3.10, 3.11, 3.12 and 3.13.
+- Docstrings throughout, explaining *why* rather than restating the code.
+- Small modules with one job each; no module over ~250 lines.
+- MIT licensed.
+
+---
+
+# Track 3 — Open Track / Bring Your Own Project
+
+Judged on technical execution, agentic design, innovation, impact, reliability
+and safety, and demo completeness. The same project, framed on the agent loop
+rather than the music.
+
+### Agentic design
+
+The agent **states a plan, then executes exactly that plan** — there is a test
+asserting the executed steps equal the declared ones, so the plan cannot drift
+from the work.
+
+- **Planning:** seven declared steps, emitted before any work begins.
+- **Tool calling:** an external detection API, a revenue sheet, a label file.
+- **Memory:** content-addressed response cache. The agent recognises a track
+  it has already scored, by hash, across runs and across catalogs.
+- **Budgeted action:** it estimates its spend before spending, and stops at
+  the ceiling.
+- **Escalation:** what it cannot settle goes to a human with a reason,
+  rather than being forced into a verdict.
+- **Self-evaluation:** it scores its own output against ground truth and
+  publishes its error rate in the same document as its finding.
+
+### Reliability and safety
+
+| Failure | Behaviour |
+|---|---|
+| API unreachable / times out / non-JSON | Asset marked `error`, excluded from the clean base, routed to review |
+| Unrecognised response schema | Raises with the observed keys named, rather than inventing a score |
+| Confidence below the floor | Forced to `contested` regardless of score |
+| Call budget exhausted | Remaining assets marked unscored, explicitly **not** clean |
+| File above the upload ceiling | Refused before the request; no credit spent |
+| No API key | Mock detector, loudly flagged, and the memo refuses to render |
+
+The governing rule, and the one worth saying out loud in the demo: **an
+unverified asset is never reported as clean.** Every failure mode fails toward
+"a human should look at this", never toward "probably fine".
+
+### Innovation
+
+Everyone else's AI-detection demo outputs a score. This outputs a dollar
+figure, an escrow recommendation, and its own error rate.
 
 ---
 
 ## Results from the demo run
 
-- Catalog size: `[ ]` tracks
+Fill from `out/risk_memo.html` and `out/audit.json` after a real run.
+
+- Catalog size: `[ ]` tracks (116 human, `[ ]` AI)
+- API calls spent: `[ ]` of 200 credits
 - Reported annual revenue: `[ ]`
 - Clean / contested / suspect: `[ ]` / `[ ]` / `[ ]`
-- Suspect share by count: `[ ]`% — by revenue: `[ ]`%
-- Recommended escrow: `[ ]`
+- Suspect share **by count**: `[ ]`% — **by revenue**: `[ ]`%
+- Recommended escrow: `[ ]` against an asking price of `[ ]`
 - Precision / recall against planted labels: `[ ]` / `[ ]`
 - Human tracks wrongly flagged: `[ ]`
+- Assets routed to human review: `[ ]`
 
-> The line worth saying out loud: suspect tracks are `[ ]`% of the catalog by
-> count but only `[ ]`% of revenue. Synthetic uploads accumulate far faster
-> than they earn.
+> **The line worth saying out loud:** suspect tracks are `[ ]`% of the catalog
+> by count but only `[ ]`% of its revenue. Synthetic uploads accumulate far
+> faster than they earn — which is why a count-based audit misprices the deal
+> in both directions.
+
+---
+
+## Tools, models, frameworks and runtimes
+
+| Component | Choice |
+|---|---|
+| Language / runtime | Python 3.10+ (CI: 3.10, 3.11, 3.12, 3.13) |
+| Dependencies | None. Standard library only. |
+| Detection model | HumanStandard detection API |
+| HTTP | `urllib.request` |
+| Data | `csv`, `dataclasses` |
+| Audit trail | `hashlib` SHA-256 |
+| Output | Hand-written HTML, no template engine |
+| Tests | `unittest`, 73 tests |
+| CI | GitHub Actions |
+
+---
+
+## Setup and testing instructions
+
+```bash
+git clone https://github.com/codergirl73/catalog-risk-auditor
+cd catalog-risk-auditor
+python3 -m unittest discover -s tests     # 73 tests, nothing to install
+
+cp .env.example .env                      # add HS_API_KEY
+
+python3 scripts/probe_api.py              # find the endpoint, spends nothing
+python3 scripts/probe_api.py --upload track.mp3   # one call, saves evidence
+
+python3 scripts/fetch_catalog.py --limit 116      # CC human music
+# add AI-generated tracks to data/catalog/ai/
+python3 scripts/build_dataset.py                  # labels + royalty sheet
+
+python3 run.py data/catalog \
+    --royalties data/royalties.csv \
+    --truth data/ground_truth.csv \
+    --json
+```
+
+Memo lands in `out/risk_memo.html`.
 
 ---
 
@@ -73,30 +257,12 @@ The API result is not the output. It is one input to a decision:
 The catalog and its royalty figures are constructed for demonstration. The
 audio is real, CC-licensed, human-made music from Internet Archive netlabel
 collections; the AI tracks were generated deliberately and labelled so that
-accuracy could be measured; the HumanStandard API responses are real; the
+accuracy could be measured; **the HumanStandard API responses are real**; the
 acquisition scenario is hypothetical.
 
----
-
-## The Code Registry track
-
-Angle: the project is **zero-dependency**. Everything runs on the Python
-standard library, so the dependency surface is empty and there is no supply
-chain to audit. Add: MIT licence, no secrets in the repo, `.env` gitignored,
-unit tests with no test framework required, docstrings throughout.
-
-- [ ] Repository is public
-- [ ] `.env` is not committed — check `git log -p | grep -i api_key`
-- [ ] `python3 -m unittest discover -s tests` passes
-
----
-
-## Open Track
-
-Same project, framed on the agent loop rather than the music: a tool that
-plans, calls an external API under a budget, escalates what it cannot resolve,
-refuses to fold uncertainty into a confident number, and reports its own error
-rate.
+This tool produces an audio-authenticity assessment, not a legal opinion or a
+valuation. Copyright enforceability of AI-generated works is a question for
+counsel.
 
 ---
 
@@ -104,11 +270,12 @@ rate.
 
 | Time | Beat |
 |---|---|
-| 0:00–0:20 | The setup. "A fund is about to pay $[ ] for this catalog." Show the folder. The three numbers: 90,000 AI uploads a day, 85% of their streams fraudulent, zero tools to check. |
-| 0:20–1:40 | The agent runs. Plan, then scoring, then tiering against visible thresholds, then escalation. |
-| 1:40–2:20 | The memo. Lead with the escrow figure. Then the count-vs-revenue line. |
-| 2:20–2:45 | Accuracy. "I planted [ ] AI tracks. It caught [ ], missed [ ], wrongly flagged [ ] humans — all of them lo-fi." |
-| 2:45–3:00 | The close: "[ ] tracks I couldn't call from audio. I'm not guessing on a $[ ] decision — those go to a human, and here's the list." |
+| 0:00–0:20 | The setup. "A fund is about to pay $`[ ]` for this catalog. Diligence checked who owns it and what it earns. Nobody checked whether a person made it." |
+| 0:20–0:40 | Show the folder. State the thresholds on screen — they print on every run. |
+| 0:40–1:40 | The agent runs. Plan first. Then the budget estimate: "115 calls needed, 200 credits." Then scoring, tiering, escalation. |
+| 1:40–2:20 | The memo. Lead with the escrow figure. Then the count-vs-revenue line — this is the moment. |
+| 2:20–2:45 | Accuracy. "I planted `[ ]` AI tracks. It caught `[ ]`, missed `[ ]`, wrongly flagged `[ ]` humans." |
+| 2:45–3:00 | Close on the contested band. "`[ ]` tracks I couldn't call from audio. I'm not guessing on a $`[ ]` decision — those go to a person, and here's the list with reasons." |
 
 ---
 
