@@ -150,6 +150,24 @@ whole lets the far end decide how much memory this process allocates.
 - Uploads are refused above `HS_MAX_UPLOAD_MB`.
 - Downloads stream in fixed chunks rather than accumulating.
 
+## The local web UI
+
+`--serve` starts an `http.server` on the developer's machine. What it refuses
+to do matters as much as what it renders:
+
+- **Binds to `127.0.0.1` only.** A pane showing somebody's catalog and its
+  valuation is not a page to put on a LAN by accident.
+- **The catalog path comes from the command line, never from a request.** No
+  URL reaches the filesystem, because no URL names a file.
+- **No static file handler.** Routes are an explicit table of five and the
+  page, stylesheet and script are served from constants, so there is nothing
+  to traverse out of. Tested against `..`, encoded `..` and `/.env`.
+- **The same CSP as the memo**, plus `nosniff` and `no-referrer` on every
+  response.
+- **One audit at a time**, so two runs cannot race on the cache or the credit
+  budget.
+- Anything surfaced from a failure passes through `config.redact()` first.
+
 ## Known trust boundaries, stated plainly
 
 These are accepted rather than solved, and worth knowing:

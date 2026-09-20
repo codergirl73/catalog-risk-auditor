@@ -79,6 +79,22 @@ python3 run.py data/catalog \
 The memo lands in `out/risk_memo.html`. To score a single file and see the
 raw response: `python3 -m catalog_audit.detector path/to/track.mp3`.
 
+### Watching it work
+
+Add `--serve` and the same audit runs in a browser instead of the terminal —
+the plan with each step lighting up as the agent reaches it, the events as
+they are emitted, the count-versus-revenue bars, and the memo one click away:
+
+```bash
+python3 run.py data/demo_catalog --serve \
+    --royalties data/royalties.csv --truth data/ground_truth.csv
+```
+
+It is `http.server` and server-sent events, so it adds nothing to install. It
+binds to `127.0.0.1` only, the catalog path comes from the command line rather
+than any request, and there is no static file handler — the routes are a fixed
+table, so there is nothing to traverse out of.
+
 ## How it decides
 
 **The thresholds are not ours.** HumanStandard publishes three calibrated

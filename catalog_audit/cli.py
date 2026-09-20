@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import config, memo
+from . import config, memo, webui
 from .agent import AuditAgent
 
 BOLD = "\033[1m"
@@ -48,6 +48,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="permit memo output from a mock run (numbers are fake)")
     p.add_argument("--json", dest="json_out", action="store_true",
                    help="also write audit.json")
+    p.add_argument("--serve", action="store_true",
+                   help="watch the audit in a browser instead of the terminal")
+    p.add_argument("--port", type=int, default=None,
+                   help="port for --serve (default %d)" % webui.DEFAULT_PORT)
     return p
 
 
@@ -138,6 +142,11 @@ def main(argv=None) -> int:
     if not catalog.is_dir():
         print("Not a folder: %s" % catalog, file=sys.stderr)
         return 2
+
+    if args.serve:
+        webui.serve(webui.options_from(args),
+                    port=args.port or webui.DEFAULT_PORT)
+        return 0
 
     agent = AuditAgent(force_mock=args.mock, budget_limit=args.budget)
 
